@@ -1,8 +1,15 @@
 node_modules
 .next
-.env
-.env.local
 .vercel
 .claude/
+
+# Segredos. O .env.example é a exceção: ele é o modelo, não tem valor real.
 .env*
-unimed.jpg
+!.env.example
+
+# Fotos de guia usadas para calibrar a leitura são dados de saúde de um
+# paciente real e não entram no repositório.
+*.jpg
+*.jpeg
+*.heic
+*.pdf
