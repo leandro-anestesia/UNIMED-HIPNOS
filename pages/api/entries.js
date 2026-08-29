@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "../../lib/kv";
 import { randomUUID } from "crypto";
 import { waitUntil } from "@vercel/functions";
 import { sheetsEnabled, syncAno, pullExecutados } from "../../lib/sheets";

@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "../../lib/kv";
 import { TIPOS_DE_CADASTRO } from "../../lib/campos";
 
 // Prefixo próprio desta equipe. Cada app tem seu próprio banco KV, então a
