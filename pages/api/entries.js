@@ -4,7 +4,7 @@ import { waitUntil } from "@vercel/functions";
 import { sheetsEnabled, syncAno, pullExecutados } from "../../lib/sheets";
 import { normalizarTexto } from "../../lib/texto";
 import { completarGuia } from "../../lib/guia";
-import { SEPARADOR_PROCEDIMENTOS } from "../../lib/campos";
+import { SEPARADOR_PROCEDIMENTOS, CAMPOS_MANUAIS, emCaixaAlta } from "../../lib/campos";
 
 const KEY = "guias:entries";
 
@@ -179,8 +179,12 @@ function acharDuplicata(entries, novo) {
  * dígito divergente, formato fora do padrão ou anotação em texto ficam intactas.
  */
 function normalizar(entry) {
+  const nomes = Object.fromEntries(
+    CAMPOS_MANUAIS.filter((f) => f.maiusculo).map((f) => [f.key, emCaixaAlta(entry[f.key])])
+  );
   return {
     ...entry,
+    ...nomes,
     paciente: (entry.paciente || "").toUpperCase(),
     procedimentos: (entry.procedimentos || [])
       .map((p) => (p || "").toString().trim().toUpperCase())

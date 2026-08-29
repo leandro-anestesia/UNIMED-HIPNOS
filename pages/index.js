@@ -846,7 +846,7 @@ export default function Home() {
                   <Field key={f.key} label={f.required ? `${rotulo} *` : rotulo}>
                     <AutocompleteInput
                       value={draft[f.key] || ""}
-                      onChange={(v) => updateDraft(f.key, v)}
+                      onChange={(v) => updateDraft(f.key, f.maiusculo ? v.toUpperCase() : v)}
                       options={cadastros[f.cadastroKey] || []}
                       placeholder={rotulo}
                       invalid={f.required && !!errorMsg && !(draft[f.key] || "").trim()}

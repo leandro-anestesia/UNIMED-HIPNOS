@@ -1,13 +1,18 @@
 import { kv } from "../../lib/kv";
 import { sheetsEnabled, syncTudo, pullExecutados } from "../../lib/sheets";
 import { completarGuia } from "../../lib/guia";
+import { CAMPOS_MANUAIS, emCaixaAlta } from "../../lib/campos";
 
 const KEY = "guias:entries";
 
 /** Mesmos acertos que a gravação faz, aplicados à lista inteira. */
 function normalizar(e) {
+  const nomes = Object.fromEntries(
+    CAMPOS_MANUAIS.filter((f) => f.maiusculo).map((f) => [f.key, emCaixaAlta(e[f.key])])
+  );
   return {
     ...e,
+    ...nomes,
     paciente: (e.paciente || "").toUpperCase(),
     procedimentos: (e.procedimentos || [])
       .map((p) => (p || "").toString().trim().toUpperCase())
@@ -19,6 +24,7 @@ function normalizar(e) {
 
 function mudou(a, b) {
   return (
+    CAMPOS_MANUAIS.filter((f) => f.maiusculo).some((f) => (a[f.key] || "") !== (b[f.key] || "")) ||
     a.paciente !== b.paciente ||
     a.urgencia !== b.urgencia ||
     a.nGuia !== b.nGuia ||
