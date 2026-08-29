@@ -109,6 +109,23 @@ function emptyDraft() {
   return d;
 }
 
+/**
+ * A mensagem de erro que o servidor mandou, quando manda uma.
+ *
+ * `fetch` só rejeita quando a requisição nem sai — 500 e 400 chegam como
+ * resposta normal, com `ok` falso. Quem não olhar o `ok` trata falha como
+ * sucesso, e foi exatamente isso que fez um lançamento sumir sem aviso.
+ */
+async function mensagemDeErro(r) {
+  try {
+    const corpo = await r.json();
+    if (corpo && corpo.error) return corpo.error;
+  } catch {
+    // resposta sem JSON; o código HTTP já diz o suficiente
+  }
+  return `erro ${r.status}`;
+}
+
 function fileToResizedBase64(file, maxDim = 1568, quality = 0.85) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -154,6 +171,9 @@ export default function Home() {
   const salvandoRef = useRef(false);
   const [guiaInfo, setGuiaInfo] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
+  // Lista vazia e lista que não carregou são idênticas na tela, e a segunda
+  // faria o anestesista concluir que o lançamento dele sumiu.
+  const [falhaDeCarga, setFalhaDeCarga] = useState("");
   const [draft, setDraft] = useState(emptyDraft());
   const [imagePreview, setImagePreview] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -163,10 +183,20 @@ export default function Home() {
   const loadEntries = useCallback(async () => {
     try {
       const r = await fetch("/api/entries");
+      if (!r.ok) {
+        setFalhaDeCarga(await mensagemDeErro(r));
+        return;
+      }
       const data = await r.json();
-      setEntries(Array.isArray(data) ? data : []);
+      if (!Array.isArray(data)) {
+        setFalhaDeCarga("o servidor respondeu algo que não é uma lista de registros");
+        return;
+      }
+      setFalhaDeCarga("");
+      setEntries(data);
     } catch (e) {
       console.error(e);
+      setFalhaDeCarga("não consegui falar com o servidor");
     } finally {
       setLoaded(true);
     }
@@ -207,20 +237,24 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipo, nome }),
       });
+      if (!r.ok) throw new Error(await mensagemDeErro(r));
       const data = await r.json();
       setCadastros({ cirurgioes: data.cirurgioes || [], anestesistas: data.anestesistas || [] });
     } catch (e) {
       console.error(e);
+      alert("Não consegui salvar o cadastro. Tente de novo.");
     }
   }
 
   async function removeCadastro(tipo, nome) {
     try {
       const r = await fetch(`/api/cadastros?tipo=${encodeURIComponent(tipo)}&nome=${encodeURIComponent(nome)}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(await mensagemDeErro(r));
       const data = await r.json();
       setCadastros({ cirurgioes: data.cirurgioes || [], anestesistas: data.anestesistas || [] });
     } catch (e) {
       console.error(e);
+      alert("Não consegui remover o cadastro. Tente de novo.");
     }
   }
 
@@ -305,15 +339,19 @@ export default function Home() {
 
     salvandoRef.current = true;
     setSalvando(true);
+    // O formulário só pode fechar depois que o servidor confirmar a gravação:
+    // fechá-lo antes apaga o que foi digitado e faz a falha parecer sucesso.
+    let salvou = false;
     try {
+      let r;
       if (editingId) {
-        await fetch("/api/entries", {
+        r = await fetch("/api/entries", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, id: editingId }),
         });
       } else {
-        let r = await fetch("/api/entries", {
+        r = await fetch("/api/entries", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -337,13 +375,27 @@ export default function Home() {
           });
         }
       }
+      if (!r.ok) {
+        setErrorMsg(
+          `Não consegui salvar: ${await mensagemDeErro(r)}. ` +
+            `O que você preencheu continua aqui — tente de novo.`
+        );
+        return;
+      }
+
+      salvou = true;
       await loadEntries();
     } catch (e) {
       console.error(e);
+      setErrorMsg(
+        "Não consegui salvar: o aparelho não conseguiu falar com o servidor. " +
+          "O que você preencheu continua aqui — tente de novo."
+      );
     } finally {
       salvandoRef.current = false;
       setSalvando(false);
     }
+    if (!salvou) return;
     setEditingId(null);
     cancelReview();
   }
@@ -381,21 +433,33 @@ export default function Home() {
   }
 
   async function deleteEntry(id) {
-    await fetch(`/api/entries?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    try {
+      const r = await fetch(`/api/entries?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(await mensagemDeErro(r));
+    } catch (e) {
+      console.error(e);
+      alert("Não consegui apagar o registro. Ele continua lá; tente de novo.");
+    }
     await loadEntries();
   }
 
   async function updateExecutado(entry, value) {
     const updated = { ...entry, executado: value };
+    // A tela muda na hora, para o toque parecer instantâneo; se a gravação
+    // falhar, o passo abaixo desfaz. Verde aceso sem ter gravado é pior do
+    // que não ter mudado nada.
     setEntries((prev) => prev.map((x) => (x.id === entry.id ? updated : x)));
     try {
-      await fetch("/api/entries", {
+      const r = await fetch("/api/entries", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
+      if (!r.ok) throw new Error(await mensagemDeErro(r));
     } catch (e) {
       console.error(e);
+      setEntries((prev) => prev.map((x) => (x.id === entry.id ? entry : x)));
+      alert("Não consegui salvar o executado. Tente de novo.");
     }
   }
 
@@ -507,6 +571,25 @@ export default function Home() {
       </div>
 
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 16px" }}>
+        {/* Sem isto, "não carregou" e "não há nada" ficam iguais na tela. */}
+        {falhaDeCarga && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              border: `1px solid ${CORES.alerta}`,
+              background: CORES.alertaFundo,
+              color: CORES.alerta,
+              borderRadius: 8,
+              fontFamily: "Helvetica, Arial, sans-serif",
+              fontSize: 13,
+            }}
+          >
+            ⚠ Não consegui carregar os registros ({falhaDeCarga}). A lista abaixo
+            não reflete o que está gravado — confira antes de lançar.
+          </div>
+        )}
+
         {status === "idle" && (
           <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "white", border: `1px solid ${CORES.borda}`, borderRadius: 8, padding: 4 }}>
             <button onClick={() => setActiveTab("novo")} style={activeTab === "novo" ? tabBtnActive : tabBtn}>
