@@ -626,7 +626,7 @@ export default function Home() {
         {status === "idle" && activeTab === "novo" && (
           // Empilhados e do mesmo tamanho: numa tela de celular, três alvos
           // largos e bem separados erram menos que dois espremidos lado a lado.
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             <button
               onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
               style={btnEmpilhado(btnPrimary)}
