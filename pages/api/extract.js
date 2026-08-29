@@ -7,18 +7,18 @@ export const config = {
 /**
  * Leitura da foto da GUIA (não da etiqueta do paciente).
  *
- * A guia traz, além dos dados do paciente, o profissional solicitante — que é o
- * cirurgião — e a tabela de procedimentos solicitados, que pode ter mais de uma
- * linha. Por isso "procedimentos" é uma lista: o anestesista desmarca na tela o
- * que não se aplica ao ato anestésico.
+ * A instrução foi calibrada contra uma Guia de Solicitação de Internação da
+ * Unimed Campinas, no padrão TISS, em que os campos são numerados. Os números
+ * citados abaixo são os daquela guia; guias de outros tipos (SP/SADT) trazem os
+ * mesmos dados com numeração diferente, e por isso cada campo é descrito
+ * também pelo rótulo.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * A CALIBRAR: esta instrução foi escrita a partir do padrão TISS das guias de
- * convênio. Confira campo a campo com uma guia real da equipe e ajuste os nomes
- * dos campos citados abaixo para os que aparecem no formulário que ela usa.
- * ─────────────────────────────────────────────────────────────────────────────
+ * Três armadilhas dessa guia, todas vistas na real e todas tratadas abaixo:
+ * o número da guia aparece três vezes com valores quase iguais, o número da
+ * carteira começa com zeros que não podem cair, e a tabela de procedimentos é
+ * seguida por uma de "Gabaritos" que não é procedimento nenhum.
  */
-const PROMPT = `Esta é a foto de uma guia de convênio médico brasileira (padrão TISS) — guia de solicitação de internação, de SP/SADT ou equivalente — usada por uma equipe de anestesia. Leia a guia e extraia os campos abaixo.
+const PROMPT = `Esta é a foto de uma guia de convênio médico brasileira no padrão TISS — em geral a "Guia de Solicitação de Internação" da Unimed, com os campos numerados. Leia a guia e extraia os campos abaixo.
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
@@ -31,18 +31,23 @@ Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatament
 
 Como preencher cada campo:
 
-- "paciente": o nome do beneficiário/paciente. Campo costuma aparecer como "Nome" ou "Nome do Beneficiário". Transcreva o nome completo, sem abreviar.
+- "paciente": o campo "10 - Nome", na seção "Dados do Beneficiário". Nome completo, exatamente como escrito, sem abreviar. Não use "50 - Nome Social".
 
-- "nGuia": o número da guia atribuído pela OPERADORA do convênio. Na guia costumam existir vários números parecidos ("Nº Guia no Prestador", "Nº Guia Principal", "Nº da Guia Atribuído pela Operadora", "Senha", "Registro ANS"). O número que interessa aqui tem 10 ou 11 dígitos e começa com 1 ou 2 — use esse critério para escolher entre eles. Prefira o campo com "atribuído pela operadora" no rótulo. Devolva só os dígitos, sem pontos, espaços ou traços. Se nenhum número atender ao critério, devolva o que estiver rotulado como número da guia, ainda assim só com dígitos.
+- "nGuia": o campo "3 - Número da Guia Atribuído pela Operadora". Ele vem com um hífen antes do último dígito, assim: "2728385947-6". Esse último dígito é o verificador e FAZ PARTE do número: devolva tudo junto, só os dígitos, sem o hífen — no exemplo, "27283859476".
+  Na mesma guia existem outros números parecidos, que NÃO servem: "2 - Nº Guia no Prestador" é o mesmo número porém sem o dígito verificador; "5 - Senha" costuma ser idêntica ao número da guia; "1 - Registro ANS" é o registro da operadora. Se o campo 3 não estiver legível, use o campo 2 e devolva o que der para ler — quem completa o dígito é o aplicativo.
 
-- "nCarteira": o número da carteira do beneficiário ("Nº Carteira", "Número da Carteira", "Carteirinha"). Só dígitos, sem pontos nem traços. NÃO confunda com o número da guia nem com o Cartão Nacional de Saúde (CNS), que tem 15 dígitos.
+- "nCarteira": o campo "7 - Número da Carteira", na seção "Dados do Beneficiário". Costuma ter 17 dígitos e COMEÇAR COM ZEROS — preserve os zeros à esquerda (ex.: "00027614700001013"). Só dígitos. Não confunda com o número da guia nem com o Cartão Nacional de Saúde.
 
-- "cirurgiao": o nome que estiver em "Nome do Profissional Solicitante" (em algumas guias, "Profissional Solicitante" ou "Médico Solicitante"). É o cirurgião. NÃO use o "Nome do Contratado", que é o hospital ou a clínica, nem o nome do profissional executante quando ele for diferente.
+- "cirurgiao": o campo "14 - Nome do Profissional Solicitante". É o cirurgião.
+  NÃO use "13 - Nome do Contratado", "20 - Nome do Hospital / Local Solicitado" nem "43 - Nome do Hospital / Local Autorizado": esses três são o hospital ou a clínica, não uma pessoa.
 
-- "procedimentos": a lista de procedimentos solicitados, da tabela de procedimentos da guia (colunas "Código do Procedimento" e "Descrição"). Um item por linha preenchida da tabela, no formato "CÓDIGO - DESCRIÇÃO" (por exemplo "31003010 - Colecistectomia videolaparoscópica"). Se a linha tiver descrição mas não código, devolva só a descrição. Devolva lista vazia se não houver tabela de procedimentos legível.
+- "procedimentos": uma entrada para cada linha da tabela "Procedimentos ou Itens Assistenciais Solicitados", juntando a coluna "35 - Código do Procedimento" com a "36 - Descrição", no formato "CÓDIGO - DESCRIÇÃO". Exemplo: "31309127 - PARTO (VIA VAGINAL)".
+  A descrição às vezes ocupa duas linhas na impressão: junte os pedaços numa entrada só.
+  IGNORE POR COMPLETO a seção "Gabaritos Solicitados", que vem logo abaixo e tem aparência de tabela igual: gabarito é pacote de cobrança, não é procedimento, e não pode entrar na lista.
+  Se a linha tiver descrição mas o código estiver ilegível, devolva só a descrição.
 
 Regras gerais:
-- Campo que não estiver visível ou legível fica como string vazia "" (ou lista vazia, no caso de "procedimentos").
+- Campo que não estiver visível ou legível fica como string vazia "" (ou lista vazia, em "procedimentos").
 - Não invente e não complete dados que não estejam escritos na guia.
 - Transcreva exatamente o que está escrito, inclusive em campos preenchidos à mão.
 - Não corrija o número da guia nem o da carteira: devolva os dígitos como estão na imagem.`;

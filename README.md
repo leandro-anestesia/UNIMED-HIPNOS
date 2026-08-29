@@ -34,12 +34,29 @@ nome das planilhas do Drive. Além dele:
 - `public/manifest.json` — nome curto e cores, à mão (é um arquivo estático e
   não consegue ler `lib/marca.js`)
 
-O nome já é o da equipe. As **cores e os ícones ainda são provisórios** — um
-glifo neutro, gerado só para o app subir apresentável — e esperam o logo.
+Nome, cores e ícones já são os da equipe. Os ícones saem do símbolo do logo
+oficial, na versão negativa.
 
-A instrução de leitura da guia está em `pages/api/extract.js` e foi escrita a
-partir do padrão TISS. **Confira campo a campo com uma guia real** e ajuste os
-nomes dos campos citados — é isso que faz a leitura acertar.
+A instrução de leitura está em `pages/api/extract.js`, calibrada contra uma
+Guia de Solicitação de Internação da Unimed Campinas. Ela cita os campos pelo
+número (`10 - Nome`, `3 - Número da Guia Atribuído pela Operadora`, `7 - Número
+da Carteira`, `14 - Nome do Profissional Solicitante`) e também pelo rótulo,
+para continuar funcionando em guias de outros tipos, como as de SP/SADT.
+
+Três coisas dessa guia que a instrução trata de propósito, e que vale conhecer
+antes de mexer nela:
+
+- **O número da guia aparece três vezes**, com valores quase iguais. O que
+  interessa é o campo 3, que traz o dígito verificador depois de um hífen
+  (`2728385947-6`). O campo 2 é o mesmo número sem o dígito, e a senha (campo 5)
+  costuma ser idêntica. A regra de `lib/guia.js` foi conferida contra esse
+  número real: o dígito calculado bate com o impresso.
+- **O número da carteira começa com zeros** (17 dígitos, como
+  `00027614700001013`). Eles não podem cair — por isso a planilha é escrita com
+  `valueInputOption: "RAW"`, que guarda o texto sem interpretar.
+- **Logo abaixo dos procedimentos vem a tabela "Gabaritos Solicitados"**, com
+  aparência idêntica. Gabarito é pacote de cobrança, não procedimento, e a
+  instrução manda ignorá-la.
 
 ## Publicar na Vercel
 
