@@ -230,7 +230,7 @@ export default function Home() {
     setMesSelecionado(meses.some((m) => m.chave === atual) ? atual : meses[0].chave);
   }, [meses, mesSelecionado]);
 
-  async function addCadastro(tipo, nome) {
+  async function addCadastro(tipo, nome, { avisar = true } = {}) {
     try {
       const r = await fetch("/api/cadastros", {
         method: "POST",
@@ -240,10 +240,29 @@ export default function Home() {
       if (!r.ok) throw new Error(await mensagemDeErro(r));
       const data = await r.json();
       setCadastros({ cirurgioes: data.cirurgioes || [], anestesistas: data.anestesistas || [] });
+      return true;
     } catch (e) {
       console.error(e);
-      alert("Não consegui salvar o cadastro. Tente de novo.");
+      if (avisar) alert("Não consegui salvar o cadastro. Tente de novo.");
+      return false;
     }
+  }
+
+  /**
+   * Importa uma lista inteira de nomes.
+   *
+   * Um de cada vez de propósito: `/api/cadastros` lê a lista, acrescenta e
+   * regrava, sem trava. Enviados em paralelo, os pedidos se sobrescreveriam e
+   * parte dos nomes se perderia — justamente numa importação de trinta.
+   */
+  async function importarCadastros(tipo, nomes) {
+    const falhas = [];
+    let gravados = 0;
+    for (const nome of nomes) {
+      if (await addCadastro(tipo, nome, { avisar: false })) gravados++;
+      else falhas.push(nome);
+    }
+    return { gravados, falhas };
   }
 
   async function removeCadastro(tipo, nome) {
@@ -1080,6 +1099,7 @@ export default function Home() {
               placeholder="Nome do cirurgião"
               items={cadastros.cirurgioes}
               onAdd={(nome) => addCadastro("cirurgioes", nome)}
+              onImportar={(nomes) => importarCadastros("cirurgioes", nomes)}
               onRemove={(nome) => removeCadastro("cirurgioes", nome)}
             />
             <CadastroSection
@@ -1087,6 +1107,7 @@ export default function Home() {
               placeholder="Nome do anestesista"
               items={cadastros.anestesistas}
               onAdd={(nome) => addCadastro("anestesistas", nome)}
+              onImportar={(nomes) => importarCadastros("anestesistas", nomes)}
               onRemove={(nome) => removeCadastro("anestesistas", nome)}
             />
           </div>
@@ -1152,14 +1173,57 @@ function ViewField({ label, value }) {
   );
 }
 
-function CadastroSection({ title, placeholder, items, onAdd, onRemove }) {
+/**
+ * Separa uma colagem de nomes, um por linha (ou separados por ponto e vírgula),
+ * tirando repetidos. É o que permite montar o cadastro pelo celular: copiar a
+ * lista de uma planilha ou mensagem e colar aqui.
+ */
+function nomesDoTexto(texto) {
+  const vistos = new Set();
+  return (texto || "")
+    .split(/[\n;]+/)
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .filter((n) => {
+      const chave = n.toLowerCase();
+      if (vistos.has(chave)) return false;
+      vistos.add(chave);
+      return true;
+    });
+}
+
+function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemove }) {
   const [value, setValue] = useState("");
+  const [lote, setLote] = useState("");
+  const [abrirLote, setAbrirLote] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [resumo, setResumo] = useState("");
 
   function submit() {
     const trimmed = value.trim();
     if (!trimmed) return;
     onAdd(trimmed);
     setValue("");
+  }
+
+  const aImportar = nomesDoTexto(lote);
+
+  async function importar() {
+    if (importando || aImportar.length === 0) return;
+    setImportando(true);
+    setResumo("");
+    try {
+      const { gravados, falhas } = await onImportar(aImportar);
+      setResumo(
+        falhas.length === 0
+          ? `${gravados} ${gravados === 1 ? "nome cadastrado" : "nomes cadastrados"}.`
+          : `${gravados} cadastrados, ${falhas.length} falharam: ${falhas.join(", ")}`
+      );
+      // Só limpa o que entrou: o que falhou continua na caixa para nova tentativa.
+      setLote(falhas.join("\n"));
+    } finally {
+      setImportando(false);
+    }
   }
 
   return (
@@ -1182,6 +1246,49 @@ function CadastroSection({ title, placeholder, items, onAdd, onRemove }) {
           + Adicionar
         </button>
       </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <button
+          onClick={() => setAbrirLote((v) => !v)}
+          style={{ ...btnSecondary, width: "100%", padding: "10px 12px", fontSize: 13 }}
+        >
+          {abrirLote ? "▴ Fechar importação" : "▾ Colar uma lista de nomes"}
+        </button>
+
+        {abrirLote && (
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+            <textarea
+              style={{ ...inputStyle, resize: "vertical", fontSize: 14 }}
+              rows={6}
+              value={lote}
+              onChange={(e) => setLote(e.target.value)}
+              placeholder={"Um nome por linha.\n\nDá para colar direto de uma planilha\nou de uma mensagem."}
+            />
+            <button
+              onClick={importar}
+              disabled={importando || aImportar.length === 0}
+              style={{
+                ...btnPrimary,
+                padding: "12px",
+                fontSize: 14,
+                opacity: importando || aImportar.length === 0 ? 0.5 : 1,
+              }}
+            >
+              {importando
+                ? "Cadastrando…"
+                : aImportar.length === 0
+                ? "Cole os nomes acima"
+                : `Cadastrar ${aImportar.length} ${aImportar.length === 1 ? "nome" : "nomes"}`}
+            </button>
+            {resumo && (
+              <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.suave }}>
+                {resumo}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {items.length === 0 ? (
         <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.tenue }}>Nenhum cadastrado ainda.</div>
       ) : (
