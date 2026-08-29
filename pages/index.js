@@ -498,7 +498,7 @@ export default function Home() {
             <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 11, letterSpacing: "0.15em", color: CORES.acento, textTransform: "uppercase", marginBottom: 4 }}>
               {EQUIPE}
             </div>
-            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 400, color: "white" }}>{TITULO}</h1>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 400, color: CORES.sobreEscura }}>{TITULO}</h1>
             <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.acento, marginTop: 4 }}>
               {loaded ? `${entries.length} registro${entries.length === 1 ? "" : "s"} · compartilhado` : "carregando…"}
             </div>
@@ -1380,7 +1380,7 @@ const btnPrimary = {
   padding: "16px",
   borderRadius: 8,
   background: CORES.principal,
-  color: "white",
+  color: CORES.sobrePrincipal,
   border: `1px solid ${CORES.principal}`,
   fontFamily: "Helvetica, Arial, sans-serif",
   fontWeight: 600,
@@ -1466,7 +1466,7 @@ const execBtn = {
 const execBtnYesActive = {
   ...execBtn,
   background: CORES.principal,
-  color: "white",
+  color: CORES.sobrePrincipal,
   border: `1px solid ${CORES.principal}`,
 };
 
