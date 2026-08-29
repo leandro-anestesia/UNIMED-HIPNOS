@@ -1,5 +1,5 @@
 import { Html, Head, Main, NextScript } from "next/document";
-import { CORES, EQUIPE, HOSPITAL, TITULO, TITULO_CURTO } from "../lib/marca";
+import { CORES, EQUIPE, TITULO, TITULO_CURTO } from "../lib/marca";
 
 export default function Document() {
   return (
@@ -10,7 +10,7 @@ export default function Document() {
         <meta name="description" content={`${TITULO} — ${EQUIPE}`} />
         {/* Dados de saúde: fora de buscadores. */}
         <meta name="robots" content="noindex, nofollow" />
-        <title>{`${TITULO} · ${HOSPITAL}`}</title>
+        <title>{`${TITULO} · ${EQUIPE}`}</title>
 
         <link rel="icon" href="/favicon.png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

@@ -24,8 +24,8 @@ separados por `·`.
 
 ## Adaptar para a equipe
 
-Tudo que identifica a equipe está em **`lib/marca.js`**: nome, hospital, título,
-cores e o nome das planilhas do Drive. Além dele:
+Tudo que identifica a equipe está em **`lib/marca.js`**: nome, título, cores e o
+nome das planilhas do Drive. Além dele:
 
 - `public/logo-mark.png` — logo do cabeçalho (fundo transparente, aparece sobre
   a faixa escura)
@@ -34,8 +34,8 @@ cores e o nome das planilhas do Drive. Além dele:
 - `public/manifest.json` — nome curto e cores, à mão (é um arquivo estático e
   não consegue ler `lib/marca.js`)
 
-Os ícones que estão no repositório são **provisórios**, gerados por
-`scripts` simples só para o app subir apresentável.
+O nome já é o da equipe. As **cores e os ícones ainda são provisórios** — um
+glifo neutro, gerado só para o app subir apresentável — e esperam o logo.
 
 A instrução de leitura da guia está em `pages/api/extract.js` e foi escrita a
 partir do padrão TISS. **Confira campo a campo com uma guia real** e ajuste os
