@@ -624,22 +624,22 @@ export default function Home() {
         )}
 
         {status === "idle" && activeTab === "novo" && (
-          <div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
-                style={btnPrimary}
-              >
-                📷 Fotografar guia
-              </button>
-              <button
-                onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
-                style={btnSecondary}
-              >
-                🖼 Da galeria
-              </button>
-            </div>
-            <button onClick={startManual} style={{ ...btnSecondary, width: "100%", marginTop: 10 }}>
+          // Empilhados e do mesmo tamanho: numa tela de celular, três alvos
+          // largos e bem separados erram menos que dois espremidos lado a lado.
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <button
+              onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
+              style={btnEmpilhado(btnPrimary)}
+            >
+              📷 Fotografar guia
+            </button>
+            <button
+              onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
+              style={btnEmpilhado(btnSecondary)}
+            >
+              🖼 Da galeria
+            </button>
+            <button onClick={startManual} style={btnEmpilhado(btnSecondary)}>
               ✏️ Preencher manualmente
             </button>
           </div>
@@ -1550,6 +1550,17 @@ const inputStyle = {
   fontSize: 15,
   background: "white",
 };
+
+/**
+ * O mesmo botão, porém numa pilha vertical.
+ *
+ * `btnPrimary` e `btnSecondary` nascem com `flex: 1` para dividir uma fileira.
+ * Dentro de uma coluna, esse mesmo `flex` faria o botão esticar na vertical —
+ * daí a troca por `0 0 auto`.
+ */
+function btnEmpilhado(base) {
+  return { ...base, flex: "0 0 auto", width: "100%" };
+}
 
 const btnIcone = {
   width: 38,
