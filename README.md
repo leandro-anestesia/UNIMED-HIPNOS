@@ -85,11 +85,19 @@ a planilha do ano pelo nome, e quem cria é uma pessoa:
 
 1. Criar uma pasta no Drive de quem responde pela equipe.
 2. Compartilhá-la com o `client_email` da conta de serviço, como **Editor**.
+   Sem isso o app enxerga a pasta como inexistente — é o passo que mais falha,
+   e a mensagem de erro da sincronização mostra qual `client_email` procurar.
 3. Passar o ID da pasta (o trecho depois de `/folders/` na URL) para a
    `GOOGLE_DRIVE_FOLDER_ID`.
 4. Dentro dela, criar uma **Planilha Google** com o nome exato devolvido por
-   `tituloDoAno` em `lib/marca.js` — hoje, `Controle de Cirurgias 2026`. Uma por
-   ano.
+   `tituloDoAno` em `lib/marca.js` — hoje, `Controle de Cirurgias UNIMED HIPNOS
+   2026`. Uma por ano.
+
+O nome da equipe entra no título de propósito: o app da outra equipe procura a
+planilha dele do mesmo jeito, e um `GOOGLE_DRIVE_FOLDER_ID` trocado por engano
+faria este app achar a planilha do outro e reescrevê-la inteira. Com nomes
+distintos, o erro de pasta vira uma sincronização que falha avisando, em vez de
+perda de dados.
 
 O app cria e mantém uma aba por mês. Ajeite as larguras de coluna do primeiro
 mês à mão: os meses seguintes nascem copiando o layout do mês mais antigo.
