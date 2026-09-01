@@ -7,16 +7,43 @@ import { CAMPOS_DA_GUIA, CAMPOS_MANUAIS, COLUNAS, SEPARADOR_PROCEDIMENTOS, valor
 import { agoraLocal, formatarData, horaDoRegistro, dataHoraDoInstante } from "../lib/tempo";
 
 const PROCEDIMENTOS_COMPLEMENTARES = [
-  "31602339 - Bloqueio anestesico de plexo",
-  "31309038 - Assistencia ao trabalho de parto, por hora (ate o limite de 6 horas)",
+  "31602339 - Bloqueio anestésico de plexo",
+  "31309038 - Assistência ao trabalho de parto, por hora (até o limite de 6 horas)",
   "30906164 - Cateterismo de artéria radial",
   "30913012 - Implante de cateter venoso central",
   "31602223 - Passagem de cateter peridural",
   "31602029 - Analgesia por dia subsequente",
   "40202445 - Laringoscopia para intubação - com vídeo ou fibro",
-  "31602169 - Bloqueio peridural ou subaracnoide (analgesia pós operatória)",
-  "31402038 - Tampão sanguíneo peridurals",
+  "31602169 - Bloqueio peridural ou subaracnoide (analgesia pós-operatória)",
+  "31402038 - Tampão sanguíneo peridural",
 ];
+
+/**
+ * Procedimentos cobrados por hora: marcar não basta, é preciso dizer quantas.
+ * O valor é o teto que a tabela permite.
+ */
+const LIMITE_DE_HORAS = { "31309038": 6 };
+
+/** O código TUSS que abre a descrição. */
+function codigoDo(item) {
+  return (item.match(/^\d+/) || [""])[0];
+}
+
+/**
+ * A entrada gravada correspondente a esta opção, quando ela está marcada.
+ *
+ * Os cobrados por hora são guardados com a quantidade no fim (" — 3h"), então
+ * a comparação não pode ser por igualdade.
+ */
+function complementarMarcado(lista, item) {
+  return (lista || []).find((s) => s === item || s.startsWith(`${item} — `)) || null;
+}
+
+/** As horas de uma entrada já gravada. */
+function horasDe(entrada) {
+  const m = (entrada || "").match(/ — (\d+)h$/);
+  return m ? Number(m[1]) : null;
+}
 
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
@@ -338,9 +365,24 @@ export default function Home() {
 
   function toggleComplementar(item) {
     setDraft((d) => {
-      const current = d.procedimentoComplementar || [];
-      const next = current.includes(item) ? current.filter((i) => i !== item) : [...current, item];
-      return { ...d, procedimentoComplementar: next };
+      const atual = d.procedimentoComplementar || [];
+      const marcado = complementarMarcado(atual, item);
+      if (marcado) return { ...d, procedimentoComplementar: atual.filter((s) => s !== marcado) };
+      // Cobrado por hora nasce com 1: é o mínimo que faz sentido registrar.
+      const novo = LIMITE_DE_HORAS[codigoDo(item)] ? `${item} — 1h` : item;
+      return { ...d, procedimentoComplementar: [...atual, novo] };
+    });
+  }
+
+  function definirHoras(item, horas) {
+    setDraft((d) => {
+      const atual = d.procedimentoComplementar || [];
+      const marcado = complementarMarcado(atual, item);
+      if (!marcado) return d;
+      return {
+        ...d,
+        procedimentoComplementar: atual.map((s) => (s === marcado ? `${item} — ${horas}h` : s)),
+      };
     });
   }
 
@@ -879,17 +921,42 @@ export default function Home() {
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>Procedimento Complementar</span>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {PROCEDIMENTOS_COMPLEMENTARES.map((item) => (
-                    <label key={item} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontFamily: "Helvetica, Arial, sans-serif", fontSize: 14 }}>
-                      <input
-                        type="checkbox"
-                        checked={(draft.procedimentoComplementar || []).includes(item)}
-                        onChange={() => toggleComplementar(item)}
-                        style={{ width: 16, height: 16, marginTop: 2, flexShrink: 0 }}
-                      />
-                      {item}
-                    </label>
-                  ))}
+                  {PROCEDIMENTOS_COMPLEMENTARES.map((item) => {
+                    const marcado = complementarMarcado(draft.procedimentoComplementar, item);
+                    const limite = LIMITE_DE_HORAS[codigoDo(item)];
+                    return (
+                      <div key={item} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontFamily: "Helvetica, Arial, sans-serif", fontSize: 14 }}>
+                          <input
+                            type="checkbox"
+                            checked={!!marcado}
+                            onChange={() => toggleComplementar(item)}
+                            style={{ width: 16, height: 16, marginTop: 2, flexShrink: 0 }}
+                          />
+                          {item}
+                        </label>
+
+                        {limite && marcado && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24 }}>
+                            <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.suave }}>
+                              Quantas horas?
+                            </span>
+                            <select
+                              value={horasDe(marcado) || 1}
+                              onChange={(e) => definirHoras(item, Number(e.target.value))}
+                              style={{ ...inputStyle, width: "auto", padding: "8px 10px" }}
+                            >
+                              {Array.from({ length: limite }, (_, i) => i + 1).map((n) => (
+                                <option key={n} value={n}>
+                                  {n} {n === 1 ? "hora" : "horas"}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 {(draft.procedimentoComplementar || []).length > 0 && (
                   <div
