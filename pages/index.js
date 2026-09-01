@@ -8,6 +8,7 @@ import { agoraLocal, formatarData, horaDoRegistro, dataHoraDoInstante } from "..
 
 const PROCEDIMENTOS_COMPLEMENTARES = [
   "31602339 - Bloqueio anestesico de plexo",
+  "31309038 - Assistencia ao trabalho de parto, por hora (ate o limite de 6 horas)",
   "30906164 - Cateterismo de artéria radial",
   "30913012 - Implante de cateter venoso central",
   "31602223 - Passagem de cateter peridural",
