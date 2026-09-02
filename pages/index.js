@@ -1617,6 +1617,14 @@ const inputStyle = {
   // Item de flex nasce com `min-width: auto` e se recusa a encolher abaixo do
   // conteúdo — é assim que um campo escapa pela lateral do cartão.
   minWidth: 0,
+  // Teto absoluto. Os campos de data e hora são desenhados pelo sistema, que
+  // os dimensiona pelo próprio conteúdo e nem sempre respeita `width` — o do
+  // iPhone é assim. `maxWidth` vale mesmo nesse caso, e é o que garante que
+  // nenhum campo passe da borda do cartão.
+  maxWidth: "100%",
+  // Data e hora nascem `inline-block` no iOS, o que reabre a porta para a
+  // largura intrínseca mandar. Em bloco, a largura é a que se pede.
+  display: "block",
   padding: "10px 12px",
   border: `1px solid ${CORES.borda}`,
   borderRadius: 4,
