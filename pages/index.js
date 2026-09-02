@@ -717,23 +717,21 @@ export default function Home() {
               {/* Data e hora vêm preenchidas e continuam editáveis: a planilha é
                   dividida por mês, e um plantão do dia 31 lançado no dia 1º
                   cairia no mês errado. */}
-              {/* `flexWrap` e as bases em pixels existem por causa do Safari do
-                  iPhone: ele não encolhe o controle nativo de data e hora abaixo
-                  de um mínimo próprio, e numa fatia estreita demais o campo vaza
-                  para fora do cartão. Assim, quando os dois não cabem lado a
-                  lado, eles passam um para baixo do outro em vez de estourar. */}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ flex: "1 1 160px", minWidth: 0 }}>
-                  <Field label="Data do lançamento">
-                    <input style={inputStyle} type="date" value={draft.dataCirurgia || ""} onChange={(e) => updateDraft("dataCirurgia", e.target.value)} />
-                  </Field>
-                </div>
-                <div style={{ flex: "1 1 120px", minWidth: 0 }}>
-                  <Field label="Hora">
-                    <input style={inputStyle} type="time" value={draft.horaLancamento || ""} onChange={(e) => updateDraft("horaLancamento", e.target.value)} />
-                  </Field>
-                </div>
-              </div>
+              {/* Cada uma na sua linha, ocupando a largura toda.
+                  Dividir a linha entre as duas não funciona: quem desenha o
+                  campo de data é o sistema, e o iPhone escreve por extenso —
+                  "2 de set. de 2026" em vez de "02/09/2026". A largura
+                  necessária depende do idioma do aparelho e do formato de hora
+                  (o "AM/PM" ainda alarga a hora), então não há fatia que sirva
+                  sempre: numa fatia curta o controle nativo vaza para fora do
+                  cartão em vez de se ajustar. Com a linha inteira à disposição,
+                  sobra espaço para qualquer formato. */}
+              <Field label="Data do lançamento">
+                <input style={inputStyle} type="date" value={draft.dataCirurgia || ""} onChange={(e) => updateDraft("dataCirurgia", e.target.value)} />
+              </Field>
+              <Field label="Hora">
+                <input style={inputStyle} type="time" value={draft.horaLancamento || ""} onChange={(e) => updateDraft("horaLancamento", e.target.value)} />
+              </Field>
 
               {CAMPOS_DA_GUIA.map((f) => {
                 // O cirurgião vem lido da guia, mas mantém o autocompletar do
