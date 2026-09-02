@@ -1,0 +1,37 @@
+/*
+ * Regras globais.
+ *
+ * O app é estilizado em linha, campo a campo. Este arquivo existe para o que
+ * estilo em linha não alcança: pseudo-elementos.
+ */
+
+/*
+ * Campos de data e hora, para que sigam o padrão dos campos de texto ao lado.
+ *
+ * Quem desenha esses dois é o sistema. O WebKit — Safari, e por baixo todos os
+ * navegadores do iPhone — centraliza o valor dentro da caixa quando ela é mais
+ * larga que o conteúdo, enquanto um campo de texto comum alinha à esquerda. Na
+ * mesma coluna, um embaixo do outro, a diferença salta aos olhos.
+ *
+ * O alinhamento do valor só se alcança pelo pseudo-elemento; `text-align` no
+ * próprio campo não chega até ele.
+ */
+input[type="date"],
+input[type="time"] {
+  text-align: left;
+}
+
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+/*
+ * O contêiner interno do WebKit tem largura própria e é o que empurrava a
+ * caixa para fora do cartão, mais larga que os campos vizinhos.
+ */
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  min-width: 0;
+  width: 100%;
+}
