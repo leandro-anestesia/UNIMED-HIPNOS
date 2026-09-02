@@ -717,13 +717,18 @@ export default function Home() {
               {/* Data e hora vêm preenchidas e continuam editáveis: a planilha é
                   dividida por mês, e um plantão do dia 31 lançado no dia 1º
                   cairia no mês errado. */}
-              <div style={{ display: "flex", gap: 10 }}>
-                <div style={{ flex: 2, minWidth: 0 }}>
+              {/* `flexWrap` e as bases em pixels existem por causa do Safari do
+                  iPhone: ele não encolhe o controle nativo de data e hora abaixo
+                  de um mínimo próprio, e numa fatia estreita demais o campo vaza
+                  para fora do cartão. Assim, quando os dois não cabem lado a
+                  lado, eles passam um para baixo do outro em vez de estourar. */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 160px", minWidth: 0 }}>
                   <Field label="Data do lançamento">
                     <input style={inputStyle} type="date" value={draft.dataCirurgia || ""} onChange={(e) => updateDraft("dataCirurgia", e.target.value)} />
                   </Field>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: "1 1 120px", minWidth: 0 }}>
                   <Field label="Hora">
                     <input style={inputStyle} type="time" value={draft.horaLancamento || ""} onChange={(e) => updateDraft("horaLancamento", e.target.value)} />
                   </Field>
@@ -1611,6 +1616,9 @@ const inputStyle = {
   width: "100%",
   // Sem isto, padding e borda somam à largura e o campo estoura o container.
   boxSizing: "border-box",
+  // Item de flex nasce com `min-width: auto` e se recusa a encolher abaixo do
+  // conteúdo — é assim que um campo escapa pela lateral do cartão.
+  minWidth: 0,
   padding: "10px 12px",
   border: `1px solid ${CORES.borda}`,
   borderRadius: 4,
