@@ -1630,6 +1630,10 @@ const inputStyle = {
   borderRadius: 4,
   fontFamily: "Helvetica, Arial, sans-serif",
   fontSize: 15,
+  // Altura de linha explícita para que todos os campos tenham a mesma altura.
+  // Com `normal`, cada tipo escolhe a sua: o campo de texto ficava com 39px, o
+  // de data com 41 e o de hora com 43,75 — três alturas na mesma coluna.
+  lineHeight: "20px",
   background: "white",
 };
 

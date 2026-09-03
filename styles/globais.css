@@ -35,3 +35,29 @@ input[type="time"]::-webkit-date-and-time-value {
   min-width: 0;
   width: 100%;
 }
+
+/*
+ * A mesma altura de linha dos campos de texto.
+ *
+ * O contêiner interno do WebKit traz altura própria, e é ela que deixava as
+ * caixas de data e hora mais altas que as vizinhas — 41 e 43,75px contra 39.
+ */
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  line-height: 20px;
+}
+
+/*
+ * Altura idêntica à dos campos de texto.
+ *
+ * Mesmo com a altura de linha igualada, o controle nativo fica 2px mais alto:
+ * o indicador do seletor entra na conta por dentro. Como `box-sizing` é
+ * `border-box`, fixar a altura resolve.
+ *
+ * 42px = 20 de altura de linha + 20 de padding + 2 de borda, os mesmos valores
+ * de `inputStyle` em pages/index.js. Mexer lá pede mexer aqui.
+ */
+input[type="date"],
+input[type="time"] {
+  height: 42px;
+}
