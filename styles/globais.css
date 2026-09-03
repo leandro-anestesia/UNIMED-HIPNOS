@@ -2,62 +2,49 @@
  * Regras globais.
  *
  * O app é estilizado em linha, campo a campo. Este arquivo existe para o que
- * estilo em linha não alcança: pseudo-elementos.
+ * estilo em linha não alcança: pseudo-elementos e a aparência nativa.
  */
 
 /*
- * Campos de data e hora, para que sigam o padrão dos campos de texto ao lado.
+ * Data e hora, para que fiquem iguais às caixas de texto ao lado.
  *
- * Quem desenha esses dois é o sistema. O WebKit — Safari, e por baixo todos os
- * navegadores do iPhone — centraliza o valor dentro da caixa quando ela é mais
- * larga que o conteúdo, enquanto um campo de texto comum alinha à esquerda. Na
- * mesma coluna, um embaixo do outro, a diferença salta aos olhos.
+ * Esses dois campos são desenhados pelo sistema, e o desenho traz medidas
+ * próprias que `width`, `height` e `line-height` não vencem. No iPhone a caixa
+ * saía quase o dobro da altura das vizinhas, com o valor encostado no topo e
+ * centralizado na horizontal.
  *
- * O alinhamento do valor só se alcança pelo pseudo-elemento; `text-align` no
- * próprio campo não chega até ele.
+ * `appearance: none` desliga esse desenho: o campo passa a ser uma caixa
+ * comum, e aí obedece ao mesmo padding, à mesma altura de linha e à mesma
+ * borda de todos os outros — sem precisar fixar altura em lugar nenhum. O
+ * seletor nativo continua abrindo ao toque, que é como se usa no celular.
+ *
+ * O preço é o ícone de calendário e de relógio, que faz parte do desenho
+ * nativo e some junto. No computador ele existia; no iPhone nunca apareceu.
  */
 input[type="date"],
 input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
   text-align: left;
-}
-
-input[type="date"]::-webkit-date-and-time-value,
-input[type="time"]::-webkit-date-and-time-value {
-  text-align: left;
+  /*
+   * A mesma altura das caixas de texto: 20 de altura de linha + 20 de padding
+   * + 2 de borda, os valores de `inputStyle` em pages/index.js. Mesmo sem o
+   * desenho nativo o conteúdo interno ainda soma alguns pixels, e `box-sizing`
+   * é `border-box`, então fixar aqui resolve. Mexer no padding ou na fonte lá
+   * pede mexer neste número.
+   */
+  height: 42px;
 }
 
 /*
- * O contêiner interno do WebKit tem largura própria e é o que empurrava a
- * caixa para fora do cartão, mais larga que os campos vizinhos.
+ * O valor mora num contêiner próprio, com alinhamento e altura de linha
+ * independentes do campo. Só o pseudo-elemento alcança.
  */
 input[type="date"]::-webkit-date-and-time-value,
 input[type="time"]::-webkit-date-and-time-value {
+  text-align: left;
+  line-height: 20px;
   min-width: 0;
   width: 100%;
-}
-
-/*
- * A mesma altura de linha dos campos de texto.
- *
- * O contêiner interno do WebKit traz altura própria, e é ela que deixava as
- * caixas de data e hora mais altas que as vizinhas — 41 e 43,75px contra 39.
- */
-input[type="date"]::-webkit-date-and-time-value,
-input[type="time"]::-webkit-date-and-time-value {
-  line-height: 20px;
-}
-
-/*
- * Altura idêntica à dos campos de texto.
- *
- * Mesmo com a altura de linha igualada, o controle nativo fica 2px mais alto:
- * o indicador do seletor entra na conta por dentro. Como `box-sizing` é
- * `border-box`, fixar a altura resolve.
- *
- * 42px = 20 de altura de linha + 20 de padding + 2 de borda, os mesmos valores
- * de `inputStyle` em pages/index.js. Mexer lá pede mexer aqui.
- */
-input[type="date"],
-input[type="time"] {
-  height: 42px;
+  margin: 0;
 }
