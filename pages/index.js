@@ -963,7 +963,7 @@ export default function Home() {
                 </div>
                 {(draft.procedimentoComplementar || []).length > 0 && (
                   <div
-                    className="aviso-guia-vermelha"
+                    className="aviso-guia-complementar"
                     style={{
                       fontFamily: "Helvetica, Arial, sans-serif",
                       fontSize: 13,
@@ -972,9 +972,9 @@ export default function Home() {
                       textAlign: "center",
                     }}
                   >
-                    NÃO ESQUEÇA DE PREENCHER A GUIA VERMELHA COMPLEMENTAR
+                    NÃO ESQUEÇA DE PREENCHER A GUIA COMPLEMENTAR
                     <style jsx>{`
-                      .aviso-guia-vermelha {
+                      .aviso-guia-complementar {
                         animation: piscar-aviso 1.8s ease-in-out infinite;
                       }
                       @keyframes piscar-aviso {
@@ -987,7 +987,7 @@ export default function Home() {
                         }
                       }
                       @media (prefers-reduced-motion: reduce) {
-                        .aviso-guia-vermelha {
+                        .aviso-guia-complementar {
                           animation: none;
                         }
                       }
