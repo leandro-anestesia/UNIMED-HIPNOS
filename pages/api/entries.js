@@ -35,7 +35,10 @@ async function espelharNoSheets(entries, anos, idsDoApp = []) {
   const unicos = [...new Set(anos.filter(Boolean))];
   for (const ano of unicos) {
     try {
-      await syncAno(ano, atuais);
+      const { falhas } = await syncAno(ano, atuais);
+      Object.entries(falhas).forEach(([modelo, mensagem]) => {
+        console.error(`Falha ao sincronizar ${modelo} de ${ano} com o Google Sheets:`, mensagem);
+      });
     } catch (err) {
       console.error(`Falha ao sincronizar o ano ${ano} com o Google Sheets:`, err.message);
     }

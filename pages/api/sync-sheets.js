@@ -56,8 +56,14 @@ export default async function handler(req, res) {
       importadosDaPlanilha: mudancas,
       recusadas,
       guiasCompletadas,
+      // Um ano pode ter duas planilhas: a de convênio e a das particulares.
       planilhas: Object.fromEntries(
-        Object.entries(sincronizados).map(([ano, id]) => [ano, `https://docs.google.com/spreadsheets/d/${id}`])
+        Object.entries(sincronizados).flatMap(([ano, porModelo]) =>
+          Object.entries(porModelo).map(([modelo, id]) => [
+            modelo === "particular" ? `${ano} (particular)` : ano,
+            `https://docs.google.com/spreadsheets/d/${id}`,
+          ])
+        )
       ),
       ...(Object.keys(falhas).length > 0 ? { falhas } : {}),
     });

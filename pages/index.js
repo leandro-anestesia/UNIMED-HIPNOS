@@ -8,12 +8,14 @@ import {
   CAMPOS_MANUAIS,
   CAMPOS_QUE_APRENDEM,
   COLUNAS,
+  COLUNAS_PARTICULAR,
+  ehParticular,
   SEPARADOR_PROCEDIMENTOS,
   temCarimbo,
   TIPOS_DE_CADASTRO,
   valorDaColuna,
 } from "../lib/campos";
-import { agoraLocal, formatarData, horaDoRegistro, dataHoraDoInstante } from "../lib/tempo";
+import { agoraLocal, dataHoraDoInstante, duracaoEntre, formatarData, horaDoRegistro } from "../lib/tempo";
 
 const PROCEDIMENTOS_COMPLEMENTARES = [
   "31602339 - Bloqueio anestésico de plexo",
@@ -661,13 +663,27 @@ export default function Home() {
     urgencias: registrosVisiveis.filter((e) => e.urgencia === true).length,
   };
 
+  /**
+   * Baixa um arquivo por ano, com um mês por aba.
+   *
+   * Sai um arquivo para os convênios e outro para as particulares, do mesmo
+   * jeito que as planilhas do Google: são duas conferências diferentes, e as
+   * colunas nem são as mesmas.
+   */
   function exportExcel() {
     if (entries.length === 0) return;
+
+    baixarAno(entries.filter((e) => !ehParticular(e)), COLUNAS, PREFIXO_ARQUIVO);
+    baixarAno(entries.filter(ehParticular), COLUNAS_PARTICULAR, `${PREFIXO_ARQUIVO}-particular`);
+  }
+
+  function baixarAno(registros, colunas, prefixo) {
+    if (registros.length === 0) return;
 
     const headers = [
       "Data",
       "Hora do lançamento",
-      ...COLUNAS.map((c) => c.label),
+      ...colunas.map((c) => c.label),
       "Executado",
       "Procedimento complementar",
       "Observação",
@@ -675,7 +691,7 @@ export default function Home() {
     const toRow = (e) => [
       formatarData(e.dataCirurgia),
       horaDoRegistro(e),
-      ...COLUNAS.map((c) => valorDaColuna(e, c)),
+      ...colunas.map((c) => valorDaColuna(e, c)),
       e.executado === true ? "Sim" : "Não",
       (e.procedimentoComplementar || []).join(", "),
       e.observacao || "",
@@ -683,7 +699,7 @@ export default function Home() {
 
     // Agrupa por ano e, dentro do ano, por mês (1-12). Sem data cai em "Sem data".
     const porAno = {};
-    entries.forEach((e) => {
+    registros.forEach((e) => {
       const [ano, mes] = (e.dataCirurgia || "").split("-");
       const chaveAno = ano || "sem-data";
       const chaveMes = mes ? parseInt(mes, 10) : 0;
@@ -708,7 +724,7 @@ export default function Home() {
             const nomeAba = mes === 0 ? "Sem data" : MESES[mes - 1].replace(/^./, (c) => c.toUpperCase());
             XLSX.utils.book_append_sheet(wb, ws, nomeAba);
           });
-        XLSX.writeFile(wb, `${PREFIXO_ARQUIVO}-${ano}.xlsx`);
+        XLSX.writeFile(wb, `${prefixo}-${ano}.xlsx`);
       });
   }
 
@@ -832,6 +848,36 @@ export default function Home() {
               </Field>
 
               {CAMPOS_DO_REGISTRO.map((f) => {
+                // Início e término só existem na cirurgia particular, que é a
+                // cobrada por tempo. Aparecem e somem conforme o convênio, e o
+                // que já tiver sido digitado fica guardado no registro caso o
+                // convênio volte a ser particular.
+                if (f.soParticular && !ehParticular(draft)) return null;
+
+                if (f.hora) {
+                  // A duração aparece embaixo do término e recalcula a cada
+                  // tecla: é ela que denuncia um horário trocado agora, e não
+                  // depois, quando o registro já virou cobrança.
+                  const duracao = f.key === "termino" ? duracaoEntre(draft.inicio, draft.termino) : "";
+                  return (
+                    <div key={f.key}>
+                      <Field label={f.appLabel || f.label}>
+                        <input
+                          style={inputStyle}
+                          type="time"
+                          value={draft[f.key] || ""}
+                          onChange={(e) => updateDraft(f.key, e.target.value)}
+                        />
+                      </Field>
+                      {duracao && (
+                        <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave, marginTop: 4 }}>
+                          Duração: {duracao}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 // Campo com cadastro atrás vira autocompletar. O cirurgião vem
                 // lido da guia e mesmo assim mantém o dele: é assim que se
                 // corrige leitura ruim e se padroniza a grafia do nome. O
@@ -1325,9 +1371,12 @@ export default function Home() {
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <ViewField label="Data do lançamento" value={formatarData(viewingEntry.dataCirurgia)} />
               <ViewField label="Hora do lançamento" value={horaDoRegistro(viewingEntry)} />
-              {CAMPOS_DO_REGISTRO.map((f) => (
+              {CAMPOS_DO_REGISTRO.filter((f) => !f.soParticular || ehParticular(viewingEntry)).map((f) => (
                 <ViewField key={f.key} label={f.label} value={viewingEntry[f.key]} />
               ))}
+              {ehParticular(viewingEntry) && (
+                <ViewField label="Horas" value={duracaoEntre(viewingEntry.inicio, viewingEntry.termino)} />
+              )}
               <ViewField label="Procedimentos" value={(viewingEntry.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS)} />
               {CAMPOS_MANUAIS.map((f) => (
                 <ViewField key={f.key} label={f.appLabel || f.label} value={viewingEntry[f.key]} />
