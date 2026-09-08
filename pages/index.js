@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
-import { CORES, EQUIPE, TITULO, PREFIXO_ARQUIVO } from "../lib/marca";
+import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import {
   CAMPOS_DO_REGISTRO,
   CAMPOS_MANUAIS,
@@ -1199,7 +1199,10 @@ export default function Home() {
                           e quem o levanta até o meio da linha é o
                           verticalAlign — sem ele o selo se alinha pela base da
                           letra e encosta na linha seguinte. */}
-                      <div style={{ fontSize: 16, lineHeight: 1.35 }}>
+                      {/* A cor do convênio no nome: é o que deixa reconhecer
+                          o convênio percorrendo a lista, sem parar para ler.
+                          Convênio fora da lista de cores fica na cor normal. */}
+                      <div style={{ fontSize: 16, lineHeight: 1.35, color: corDoConvenio(e.convenio) || CORES.tinta }}>
                         {e.paciente || "(sem nome)"}
                         {e.urgencia && (
                           <span
@@ -1360,18 +1363,23 @@ export default function Home() {
  * já se identifica sozinho, e a linha inteira precisa caber num celular.
  */
 function LinhaDeIdentificacao({ entry }) {
-  const partes = [
+  const numeros = [
     entry.prontuario ? `Prontuário: ${entry.prontuario}` : "",
     entry.nGuia ? `Nº Guia: ${entry.nGuia}` : "",
     entry.nCarteira ? `Carteira: ${entry.nCarteira}` : "",
-    entry.convenio || "",
   ].filter(Boolean);
 
-  if (partes.length === 0) return null;
+  const convenio = (entry.convenio || "").trim();
+  if (numeros.length === 0 && !convenio) return null;
+
+  const cor = corDoConvenio(convenio);
 
   return (
     <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave, marginTop: 2 }}>
-      {partes.join(" · ")}
+      {numeros.join(" · ")}
+      {numeros.length > 0 && convenio ? " · " : ""}
+      {/* Só o nome do convênio muda de cor; os números continuam discretos. */}
+      {convenio && <span style={{ color: cor || "inherit", fontWeight: cor ? 600 : 400 }}>{convenio}</span>}
     </div>
   );
 }
