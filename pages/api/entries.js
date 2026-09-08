@@ -3,8 +3,8 @@ import { randomUUID } from "crypto";
 import { waitUntil } from "@vercel/functions";
 import { sheetsEnabled, syncAno, pullExecutados } from "../../lib/sheets";
 import { normalizarTexto } from "../../lib/texto";
-import { completarGuia } from "../../lib/guia";
-import { SEPARADOR_PROCEDIMENTOS, CAMPOS_DO_REGISTRO, CAMPOS_MANUAIS, emCaixaAlta } from "../../lib/campos";
+import { SEPARADOR_PROCEDIMENTOS } from "../../lib/campos";
+import { normalizarRegistro } from "../../lib/registro";
 import { comTrava } from "../../lib/trava";
 
 const KEY = "guias:entries";
@@ -160,35 +160,6 @@ function acharDuplicata(entries, novo) {
   );
 }
 
-/**
- * Acertos que valem por qualquer caminho de gravação: paciente e procedimentos
- * em caixa alta, e nº da guia com o dígito verificador completo.
- *
- * `completarGuia` só acrescenta o dígito quando ele claramente falta; guia com
- * dígito divergente, formato fora do padrão ou anotação em texto ficam intactas.
- */
-function normalizar(entry) {
-  const nomes = Object.fromEntries(
-    CAMPOS_MANUAIS.filter((f) => f.maiusculo).map((f) => [f.key, emCaixaAlta(entry[f.key])])
-  );
-  // Espaço sobrando no fim de um convênio digitado criaria um segundo
-  // "Unimed " no cadastro e uma segunda grafia na planilha.
-  const textos = Object.fromEntries(
-    CAMPOS_DO_REGISTRO.map((f) => [f.key, (entry[f.key] || "").toString().trim()])
-  );
-  return {
-    ...entry,
-    ...textos,
-    ...nomes,
-    paciente: (entry.paciente || "").trim().toUpperCase(),
-    procedimentos: (entry.procedimentos || [])
-      .map((p) => (p || "").toString().trim().toUpperCase())
-      .filter(Boolean),
-    urgencia: entry.urgencia === true,
-    nGuia: completarGuia(entry.nGuia),
-  };
-}
-
 export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
@@ -198,7 +169,7 @@ export default async function handler(req, res) {
 
     if (req.method === "POST") {
       const { confirmarDuplicado, ...dados } = req.body || {};
-      const entry = normalizar({ ...dados, id: randomUUID(), criadoEm: new Date().toISOString() });
+      const entry = normalizarRegistro({ ...dados, id: randomUUID(), criadoEm: new Date().toISOString() });
 
       const duplicada = await comTravaDeEntries(async () => {
         const entries = (await kv.get(KEY)) || [];
@@ -220,7 +191,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "PUT") {
-      const updated = normalizar(req.body || {});
+      const updated = normalizarRegistro(req.body || {});
       if (!updated || !updated.id) return res.status(400).json({ error: "id é obrigatório" });
 
       const anterior = await comTravaDeEntries(async () => {

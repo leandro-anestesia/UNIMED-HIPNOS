@@ -381,9 +381,18 @@ export default function Home() {
       // momento do "lançar a guia", e mostra o que aconteceu.
       const guia = analisarGuia(parsed.nGuia);
       setGuiaInfo(guia.estado === "vazia" ? null : guia);
+      // A caixa alta é aplicada aqui, e não só na gravação: a tela de
+      // conferência tem de mostrar o texto como ele vai ficar na planilha.
+      const emCaixa = Object.fromEntries(
+        CAMPOS_DO_REGISTRO.filter((f) => f.maiusculo).map((f) => [
+          f.key,
+          (parsed[f.key] || "").toString().toUpperCase(),
+        ])
+      );
       setDraft({
         ...emptyDraft(),
         ...parsed,
+        ...emCaixa,
         nGuia: guia.numero,
         procedimentos: paraLinhas(parsed.procedimentos),
       });
@@ -817,7 +826,7 @@ export default function Home() {
                     <Field key={f.key} label={f.label}>
                       <AutocompleteInput
                         value={draft[f.key] || ""}
-                        onChange={(v) => updateDraft(f.key, v)}
+                        onChange={(v) => updateDraft(f.key, f.maiusculo ? v.toUpperCase() : v)}
                         options={cadastros[f.cadastroKey] || []}
                         placeholder={f.label}
                       />

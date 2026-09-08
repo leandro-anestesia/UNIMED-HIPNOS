@@ -1,36 +1,8 @@
 import { kv } from "../../lib/kv";
 import { sheetsEnabled, syncTudo, pullExecutados } from "../../lib/sheets";
-import { completarGuia } from "../../lib/guia";
-import { CAMPOS_MANUAIS, emCaixaAlta } from "../../lib/campos";
+import { normalizarRegistro, mudouNaNormalizacao } from "../../lib/registro";
 
 const KEY = "guias:entries";
-
-/** Mesmos acertos que a gravação faz, aplicados à lista inteira. */
-function normalizar(e) {
-  const nomes = Object.fromEntries(
-    CAMPOS_MANUAIS.filter((f) => f.maiusculo).map((f) => [f.key, emCaixaAlta(e[f.key])])
-  );
-  return {
-    ...e,
-    ...nomes,
-    paciente: (e.paciente || "").toUpperCase(),
-    procedimentos: (e.procedimentos || [])
-      .map((p) => (p || "").toString().trim().toUpperCase())
-      .filter(Boolean),
-    urgencia: e.urgencia === true,
-    nGuia: completarGuia(e.nGuia),
-  };
-}
-
-function mudou(a, b) {
-  return (
-    CAMPOS_MANUAIS.filter((f) => f.maiusculo).some((f) => (a[f.key] || "") !== (b[f.key] || "")) ||
-    a.paciente !== b.paciente ||
-    a.urgencia !== b.urgencia ||
-    a.nGuia !== b.nGuia ||
-    (a.procedimentos || []).join(" ") !== (b.procedimentos || []).join(" ")
-  );
-}
 
 export default async function handler(req, res) {
   if (req.method !== "POST" && req.method !== "GET") {
@@ -49,14 +21,14 @@ export default async function handler(req, res) {
   try {
     let entries = (await kv.get(KEY)) || [];
 
-    const normalizados = entries.map(normalizar);
+    const normalizados = entries.map(normalizarRegistro);
     const guiasCompletadas = normalizados
       .map((e, i) =>
         e.nGuia !== entries[i].nGuia ? { de: entries[i].nGuia, para: e.nGuia, paciente: e.paciente } : null
       )
       .filter(Boolean);
 
-    if (normalizados.some((e, i) => mudou(e, entries[i]))) {
+    if (normalizados.some((e, i) => mudouNaNormalizacao(entries[i], e))) {
       entries = normalizados;
       await kv.set(KEY, entries);
     }
