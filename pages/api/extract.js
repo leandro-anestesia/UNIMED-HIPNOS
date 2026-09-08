@@ -55,6 +55,7 @@ Como preencher cada campo:
 
 - "procedimentos": uma entrada para cada linha da tabela "Procedimentos ou Itens Assistenciais Solicitados", juntando a coluna "35 - Código do Procedimento" com a "36 - Descrição", no formato "CÓDIGO - DESCRIÇÃO". Exemplo: "31309127 - PARTO (VIA VAGINAL)".
   A descrição às vezes ocupa duas linhas na impressão: junte os pedaços numa entrada só.
+  IGNORE também a linha cuja descrição é INTERNAÇÃO (por exemplo "99996666 - INTERNACAO"): é a internação hospitalar em si, não um ato anestésico, e não entra na lista.
   IGNORE POR COMPLETO a seção "Gabaritos Solicitados", que vem logo abaixo e tem aparência de tabela igual: gabarito é pacote de cobrança, não é procedimento, e não pode entrar na lista.
   Se a linha tiver descrição mas o código estiver ilegível, devolva só a descrição.
 
@@ -105,6 +106,22 @@ function nomeDoConvenio(valor) {
   );
 
   return apelido ? apelido[1] : semCodigo;
+}
+
+/**
+ * A linha de internação, que a guia lista junto dos procedimentos.
+ *
+ * A internação é a diária do hospital, não um ato anestésico: vinha marcada
+ * para o anestesista desmarcar toda vez. A instrução de leitura já pede para
+ * pular, e aqui a regra vale mesmo quando o modelo traz assim mesmo.
+ *
+ * Compara pela descrição, depois do código, e pela primeira palavra: pega
+ * "99996666 - INTERNACAO" e "INTERNAÇÃO HOSPITALAR", e não pega um
+ * procedimento que só mencione internação no meio do texto.
+ */
+function ehInternacao(procedimento) {
+  const descricao = (procedimento || "").toString().replace(/^\s*\d+\s*[-–—]\s*/, "");
+  return normalizarTexto(descricao).split(/\s+/)[0] === "internacao";
 }
 
 export default async function handler(req, res) {
@@ -179,7 +196,10 @@ export default async function handler(req, res) {
       nGuia: parsed.nGuia || "",
       nCarteira: parsed.nCarteira || "",
       cirurgiao: parsed.cirurgiao || "",
-      procedimentos: procedimentos.map((p) => (p || "").toString().trim()).filter(Boolean),
+      procedimentos: procedimentos
+        .map((p) => (p || "").toString().trim())
+        .filter(Boolean)
+        .filter((p) => !ehInternacao(p)),
     });
   } catch (err) {
     console.error(err);
