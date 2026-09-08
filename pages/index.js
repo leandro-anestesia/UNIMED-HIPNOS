@@ -1176,23 +1176,31 @@ export default function Home() {
                 >
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <div>
-                      {/* Flex, e não texto seguido de selo: assim o selo fica no
-                          meio da linha do nome. Solto no meio do texto ele se
-                          alinhava pela base da letra e encostava na linha de
-                          baixo. */}
-                      <div style={{ fontSize: 16, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span>{e.paciente || "(sem nome)"}</span>
+                      {/* O selo anda no meio do texto, e não como item de flex:
+                          num nome comprido, que ocupa a linha inteira do
+                          celular, o item de flex ia parar sozinho na linha de
+                          baixo, longe do nome. Aqui ele segue a última palavra,
+                          e quem o levanta até o meio da linha é o
+                          verticalAlign — sem ele o selo se alinha pela base da
+                          letra e encosta na linha seguinte. */}
+                      <div style={{ fontSize: 16, lineHeight: 1.35 }}>
+                        {e.paciente || "(sem nome)"}
                         {e.urgencia && (
                           <span
                             style={{
+                              display: "inline-block",
+                              verticalAlign: "middle",
+                              position: "relative",
+                              top: -1,
+                              marginLeft: 8,
                               padding: "2px 7px",
                               borderRadius: 9,
                               background: CORES.alertaFundo,
                               color: CORES.alerta,
                               border: `1px solid ${CORES.alerta}`,
                               fontFamily: "Helvetica, Arial, sans-serif",
-                              fontSize: 10,
-                              lineHeight: "14px",
+                              fontSize: 9,
+                              lineHeight: "13px",
                               letterSpacing: "0.04em",
                               fontWeight: 600,
                               whiteSpace: "nowrap",
