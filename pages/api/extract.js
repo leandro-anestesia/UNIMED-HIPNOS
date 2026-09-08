@@ -1,3 +1,5 @@
+import { normalizarTexto } from "../../lib/texto";
+
 export const config = {
   api: {
     bodyParser: { sizeLimit: "10mb" },
@@ -63,6 +65,16 @@ Regras gerais:
 - Não corrija o número da guia nem o da carteira: devolva os dígitos como estão na imagem.`;
 
 /**
+ * O que a guia imprime, e o nome que a equipe usa.
+ *
+ * A guia identifica o paciente que paga do próprio bolso como UNIPAR; no
+ * controle da equipe isso é PARTICULAR. A troca é feita aqui, e não na
+ * instrução de leitura, porque leitura é pedido e isto é regra: o modelo
+ * transcreve o que está impresso, e a tradução é sempre a mesma.
+ */
+const APELIDOS_DE_CONVENIO = { UNIPAR: "PARTICULAR" };
+
+/**
  * Tira o código que vem colado ao nome do convênio.
  *
  * A guia costuma imprimir "0110 - UNIMED CAMPINAS"; o que serve é o nome. A
@@ -74,7 +86,17 @@ Regras gerais:
  */
 function nomeDoConvenio(valor) {
   const texto = (valor || "").toString().trim();
-  return texto.replace(/^[A-Za-z0-9.]{1,10}\s*[-–—]\s*/, (achado) => (/\d/.test(achado) ? "" : achado)).trim();
+  const semCodigo = texto
+    .replace(/^[A-Za-z0-9.]{1,10}\s*[-–—]\s*/, (achado) => (/\d/.test(achado) ? "" : achado))
+    .trim();
+
+  // Compara só a primeira palavra: a guia às vezes traz "UNIPAR SAUDE".
+  const primeira = normalizarTexto(semCodigo).split(/\s+/)[0] || "";
+  const apelido = Object.entries(APELIDOS_DE_CONVENIO).find(
+    ([impresso]) => normalizarTexto(impresso) === primeira
+  );
+
+  return apelido ? apelido[1] : semCodigo;
 }
 
 export default async function handler(req, res) {
