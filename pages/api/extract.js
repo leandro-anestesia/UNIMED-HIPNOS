@@ -22,7 +22,9 @@ const PROMPT = `Esta é a foto de uma guia de convênio médico brasileira no pa
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
+  "prontuario": "",
   "paciente": "",
+  "convenio": "",
   "nGuia": "",
   "nCarteira": "",
   "cirurgiao": "",
@@ -30,6 +32,14 @@ Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatament
 }
 
 Como preencher cada campo:
+
+- "prontuario": o número do prontuário do paciente, quando a guia trouxer. Procure pelo rótulo — "Prontuário", "Prontuario", "Nº do Prontuário", "Pront." — em qualquer lugar da folha, inclusive em carimbo, etiqueta ou cabeçalho impresso pelo hospital. Devolva só o número, como está escrito, com os zeros à esquerda se houver.
+  NÃO use o número da guia, o da carteira, o do atendimento, o da senha nem o "7 - Número da Carteira". Se não houver campo de prontuário na folha, devolva "".
+
+- "convenio": o nome do convênio (a operadora do plano de saúde do paciente — quem paga).
+  Procure primeiro um campo rotulado "Convênio", "Convenio", "Operadora" ou "Plano". O valor costuma vir como CÓDIGO seguido de traço e nome, assim: "0110 - UNIMED CAMPINAS". Devolva SÓ O NOME, sem o código e sem o traço — no exemplo, "UNIMED CAMPINAS".
+  Se não houver campo rotulado, use o nome da operadora impresso no alto da guia (junto do logotipo, ao lado de "1 - Registro ANS").
+  NÃO devolva o nome do hospital ou da clínica onde o procedimento vai acontecer — "13 - Nome do Contratado", "20 - Nome do Hospital / Local Solicitado" e "43 - Nome do Hospital / Local Autorizado" — a menos que a operadora do plano seja exatamente essa mesma empresa.
 
 - "paciente": o campo "10 - Nome", na seção "Dados do Beneficiário". Nome completo, exatamente como escrito, sem abreviar. Não use "50 - Nome Social".
 
@@ -51,6 +61,21 @@ Regras gerais:
 - Não invente e não complete dados que não estejam escritos na guia.
 - Transcreva exatamente o que está escrito, inclusive em campos preenchidos à mão.
 - Não corrija o número da guia nem o da carteira: devolva os dígitos como estão na imagem.`;
+
+/**
+ * Tira o código que vem colado ao nome do convênio.
+ *
+ * A guia costuma imprimir "0110 - UNIMED CAMPINAS"; o que serve é o nome. A
+ * instrução já pede o nome sozinho, mas a leitura às vezes devolve o par
+ * inteiro, e aqui isso não depende de sorte.
+ *
+ * Só corta quando o pedaço antes do traço tem número: assim um convênio cujo
+ * nome de verdade tenha traço — "SAO FRANCISCO - SAUDE" — fica inteiro.
+ */
+function nomeDoConvenio(valor) {
+  const texto = (valor || "").toString().trim();
+  return texto.replace(/^[A-Za-z0-9.]{1,10}\s*[-–—]\s*/, (achado) => (/\d/.test(achado) ? "" : achado)).trim();
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -118,7 +143,9 @@ export default async function handler(req, res) {
       : [];
 
     return res.status(200).json({
+      prontuario: (parsed.prontuario || "").toString().trim(),
       paciente: parsed.paciente || "",
+      convenio: nomeDoConvenio(parsed.convenio),
       nGuia: parsed.nGuia || "",
       nCarteira: parsed.nCarteira || "",
       cirurgiao: parsed.cirurgiao || "",
