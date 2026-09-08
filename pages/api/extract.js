@@ -67,12 +67,18 @@ Regras gerais:
 /**
  * O que a guia imprime, e o nome que a equipe usa.
  *
- * A guia identifica o paciente que paga do próprio bolso como UNIPAR; no
- * controle da equipe isso é PARTICULAR. A troca é feita aqui, e não na
- * instrução de leitura, porque leitura é pedido e isto é regra: o modelo
- * transcreve o que está impresso, e a tradução é sempre a mesma.
+ * UNIPAR é como a guia identifica quem paga do próprio bolso: no controle da
+ * equipe isso é PARTICULAR. E a Notre Dame vem com razão social inteira —
+ * "NOTRE DAME INTERMEDICA SAUDE S.A." —, que na lista só ocupa espaço.
+ *
+ * A troca é feita aqui, e não na instrução de leitura, porque leitura é pedido
+ * e isto é regra: o modelo transcreve o que está impresso, e a tradução é
+ * sempre a mesma. Sai em caixa alta porque o campo inteiro é em caixa alta.
  */
-const APELIDOS_DE_CONVENIO = { UNIPAR: "PARTICULAR" };
+const APELIDOS_DE_CONVENIO = {
+  UNIPAR: "PARTICULAR",
+  NOTRE: "NOTREDAME",
+};
 
 /**
  * Tira o código que vem colado ao nome do convênio.
@@ -90,10 +96,12 @@ function nomeDoConvenio(valor) {
     .replace(/^[A-Za-z0-9.]{1,10}\s*[-–—]\s*/, (achado) => (/\d/.test(achado) ? "" : achado))
     .trim();
 
-  // Compara só a primeira palavra: a guia às vezes traz "UNIPAR SAUDE".
-  const primeira = normalizarTexto(semCodigo).split(/\s+/)[0] || "";
-  const apelido = Object.entries(APELIDOS_DE_CONVENIO).find(
-    ([impresso]) => normalizarTexto(impresso) === primeira
+  // Palavra inteira, em qualquer posição do nome: a guia escreve "NOTRE DAME
+  // INTERMEDICA SAUDE S.A." e "UNIPAR SAUDE", e o resto não interessa. Palavra
+  // inteira, e não pedaço, para um "UNIPARANA" não virar particular.
+  const palavras = normalizarTexto(semCodigo).split(/\s+/).filter(Boolean);
+  const apelido = Object.entries(APELIDOS_DE_CONVENIO).find(([impresso]) =>
+    palavras.includes(normalizarTexto(impresso))
   );
 
   return apelido ? apelido[1] : semCodigo;
