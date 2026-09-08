@@ -1176,19 +1176,24 @@ export default function Home() {
                 >
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <div>
-                      <div style={{ fontSize: 16 }}>
-                        {e.paciente || "(sem nome)"}
+                      {/* Flex, e não texto seguido de selo: assim o selo fica no
+                          meio da linha do nome. Solto no meio do texto ele se
+                          alinhava pela base da letra e encostava na linha de
+                          baixo. */}
+                      <div style={{ fontSize: 16, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span>{e.paciente || "(sem nome)"}</span>
                         {e.urgencia && (
                           <span
                             style={{
-                              marginLeft: 8,
-                              padding: "2px 8px",
-                              borderRadius: 10,
+                              padding: "2px 7px",
+                              borderRadius: 9,
                               background: CORES.alertaFundo,
                               color: CORES.alerta,
                               border: `1px solid ${CORES.alerta}`,
                               fontFamily: "Helvetica, Arial, sans-serif",
-                              fontSize: 11,
+                              fontSize: 10,
+                              lineHeight: "14px",
+                              letterSpacing: "0.04em",
                               fontWeight: 600,
                               whiteSpace: "nowrap",
                             }}
