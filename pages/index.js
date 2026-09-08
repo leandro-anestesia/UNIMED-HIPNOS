@@ -9,6 +9,7 @@ import {
   CAMPOS_QUE_APRENDEM,
   COLUNAS,
   SEPARADOR_PROCEDIMENTOS,
+  temCarimbo,
   TIPOS_DE_CADASTRO,
   valorDaColuna,
 } from "../lib/campos";
@@ -273,6 +274,13 @@ export default function Home() {
   // cada render faria o efeito rodar sem necessidade.
   const meses = useMemo(() => mesesDosRegistros(entries), [entries]);
 
+  // A lista do campo de carimbo sai do próprio cadastro, filtrada: o nome
+  // completo é o que está cadastrado, e não uma segunda lista para manter.
+  const comCarimbo = useMemo(
+    () => (cadastros.anestesistas || []).filter(temCarimbo),
+    [cadastros.anestesistas]
+  );
+
   // Abre no mês corrente; se ele ainda não tiver registro, no mês mais recente
   // que tiver. Só define uma vez — não pode desfazer a escolha do usuário a
   // cada recarga da lista.
@@ -393,6 +401,23 @@ export default function Home() {
 
   function updateDraft(key, value) {
     setDraft((d) => ({ ...d, [key]: value }));
+  }
+
+  /**
+   * Escolher quem fez o procedimento já preenche o carimbo, quando essa pessoa
+   * tem carimbo próprio — que é o caso da maioria dos lançamentos.
+   *
+   * Só preenche; não apaga. Quando quem fez não tem carimbo, o campo continua
+   * como estava, porque aí o carimbo é mesmo de outra pessoa e é justamente o
+   * que o anestesista precisa escolher.
+   */
+  function updateAnestesista(campo, valor) {
+    const nome = campo.maiusculo ? valor.toUpperCase() : valor;
+    setDraft((d) => {
+      const proximo = { ...d, [campo.key]: nome };
+      if (campo.key === "anestesista" && temCarimbo(nome)) proximo.anestesistaCarimbo = nome;
+      return proximo;
+    });
   }
 
   function updateProcedimento(indice, patch) {
@@ -942,8 +967,8 @@ export default function Home() {
                   <Field key={f.key} label={f.required ? `${rotulo} *` : rotulo}>
                     <AutocompleteInput
                       value={draft[f.key] || ""}
-                      onChange={(v) => updateDraft(f.key, f.maiusculo ? v.toUpperCase() : v)}
-                      options={cadastros[f.cadastroKey] || []}
+                      onChange={(v) => updateAnestesista(f, v)}
+                      options={f.somenteComCarimbo ? comCarimbo : cadastros[f.cadastroKey] || []}
                       placeholder={rotulo}
                       invalid={f.required && !!errorMsg && !(draft[f.key] || "").trim()}
                     />
