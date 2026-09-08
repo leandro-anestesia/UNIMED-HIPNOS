@@ -1,10 +1,16 @@
 import { kv } from "../../lib/kv";
 import { TIPOS_DE_CADASTRO, CADASTROS_EM_CAIXA_ALTA, emCaixaAlta } from "../../lib/campos";
+import { comTrava } from "../../lib/trava";
 
 // Prefixo próprio desta equipe. Cada app tem seu próprio banco KV, então a
 // separação já está garantida pela infraestrutura — o prefixo é a segunda
 // tranca, para o caso de alguém apontar dois deploys para o mesmo banco.
 const KEY = "guias:cadastros";
+
+// A lista inteira mora numa chave só, e agora o app grava nela sozinho: todo
+// registro salvo cadastra o convênio digitado. Dois anestesistas salvando ao
+// mesmo tempo leriam a mesma lista e a última gravação apagaria a outra.
+const TRAVA = "guias:cadastros:trava";
 
 /** O nome como ele deve ficar guardado, conforme o tipo de cadastro. */
 function comoGuardar(tipo, nome) {
@@ -58,11 +64,14 @@ export default async function handler(req, res) {
       const guardar = comoGuardar(tipo, nome);
       if (!guardar) return res.status(400).json({ error: "nome é obrigatório" });
 
-      const data = await getData();
-      if (!data[tipo].some((n) => n.toLowerCase() === guardar.toLowerCase())) {
-        data[tipo] = ordenar([...data[tipo], guardar]);
-      }
-      await kv.set(KEY, data);
+      const data = await comTrava(TRAVA, async () => {
+        const atual = await getData();
+        if (!atual[tipo].some((n) => n.toLowerCase() === guardar.toLowerCase())) {
+          atual[tipo] = ordenar([...atual[tipo], guardar]);
+          await kv.set(KEY, atual);
+        }
+        return atual;
+      });
       return res.status(200).json(data);
     }
 
@@ -72,9 +81,12 @@ export default async function handler(req, res) {
 
       // Compara sem caixa: o nome pode chegar como estava antes da conversão.
       const alvo = (nome || "").toString().trim().toLowerCase();
-      const data = await getData();
-      data[tipo] = data[tipo].filter((n) => n.toLowerCase() !== alvo);
-      await kv.set(KEY, data);
+      const data = await comTrava(TRAVA, async () => {
+        const atual = await getData();
+        atual[tipo] = atual[tipo].filter((n) => n.toLowerCase() !== alvo);
+        await kv.set(KEY, atual);
+        return atual;
+      });
       return res.status(200).json(data);
     }
 

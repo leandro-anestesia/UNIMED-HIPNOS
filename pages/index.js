@@ -3,7 +3,15 @@ import * as XLSX from "xlsx";
 import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
 import { CORES, EQUIPE, TITULO, PREFIXO_ARQUIVO } from "../lib/marca";
-import { CAMPOS_DA_GUIA, CAMPOS_MANUAIS, COLUNAS, SEPARADOR_PROCEDIMENTOS, valorDaColuna } from "../lib/campos";
+import {
+  CAMPOS_DO_REGISTRO,
+  CAMPOS_MANUAIS,
+  CAMPOS_QUE_APRENDEM,
+  COLUNAS,
+  SEPARADOR_PROCEDIMENTOS,
+  TIPOS_DE_CADASTRO,
+  valorDaColuna,
+} from "../lib/campos";
 import { agoraLocal, formatarData, horaDoRegistro, dataHoraDoInstante } from "../lib/tempo";
 
 const PROCEDIMENTOS_COMPLEMENTARES = [
@@ -93,7 +101,15 @@ function ordenarPorData(a, b) {
 function entryMatchesSearch(e, query) {
   const q = normalizarTexto(query);
   if (!q) return true;
-  const textos = [e.paciente, e.cirurgiao, e.anestesista, e.anestesistaCarimbo, ...(e.procedimentos || [])];
+  const textos = [
+    e.prontuario,
+    e.paciente,
+    e.convenio,
+    e.cirurgiao,
+    e.anestesista,
+    e.anestesistaCarimbo,
+    ...(e.procedimentos || []),
+  ];
   if (textos.some((f) => normalizarTexto(f).includes(q))) return true;
   if (e.dataCirurgia) {
     const [y, m, d] = e.dataCirurgia.split("-");
@@ -122,10 +138,18 @@ function marcados(linhas) {
     .filter(Boolean);
 }
 
+/** Um cadastro vazio por tipo — a forma que o estado sempre tem. */
+const CADASTROS_VAZIOS = Object.fromEntries(TIPOS_DE_CADASTRO.map((t) => [t, []]));
+
+/** A resposta de /api/cadastros com todos os tipos presentes, mesmo os vazios. */
+function comTodosOsTipos(data) {
+  return Object.fromEntries(TIPOS_DE_CADASTRO.map((t) => [t, (data && data[t]) || []]));
+}
+
 function emptyDraft() {
   const { data, hora } = agoraLocal();
   const d = {};
-  CAMPOS_DA_GUIA.forEach((f) => (d[f.key] = ""));
+  CAMPOS_DO_REGISTRO.forEach((f) => (d[f.key] = ""));
   CAMPOS_MANUAIS.forEach((f) => (d[f.key] = ""));
   d.dataCirurgia = data;
   d.horaLancamento = hora;
@@ -191,7 +215,7 @@ export default function Home() {
   const [status, setStatus] = useState("idle"); // idle | extracting | review
   const [activeTab, setActiveTab] = useState("novo"); // novo | procedimentos | cadastros
   const [viewingEntry, setViewingEntry] = useState(null);
-  const [cadastros, setCadastros] = useState({ cirurgioes: [], anestesistas: [] });
+  const [cadastros, setCadastros] = useState(CADASTROS_VAZIOS);
   const [searchQuery, setSearchQuery] = useState("");
   const [mesSelecionado, setMesSelecionado] = useState(null); // null = ainda não escolhido
   const [sincronizando, setSincronizando] = useState(false);
@@ -234,7 +258,7 @@ export default function Home() {
     try {
       const r = await fetch("/api/cadastros");
       const data = await r.json();
-      setCadastros({ cirurgioes: data.cirurgioes || [], anestesistas: data.anestesistas || [] });
+      setCadastros(comTodosOsTipos(data));
     } catch (e) {
       console.error(e);
     }
@@ -267,7 +291,7 @@ export default function Home() {
       });
       if (!r.ok) throw new Error(await mensagemDeErro(r));
       const data = await r.json();
-      setCadastros({ cirurgioes: data.cirurgioes || [], anestesistas: data.anestesistas || [] });
+      setCadastros(comTodosOsTipos(data));
       return true;
     } catch (e) {
       console.error(e);
@@ -293,12 +317,35 @@ export default function Home() {
     return { gravados, falhas };
   }
 
+  /**
+   * Guarda no cadastro o que foi digitado nos campos marcados com `aprende`.
+   *
+   * É assim que a lista de convênios nasce: ninguém precisa cadastrar nada
+   * antes: o primeiro lançamento de cada convênio o cadastra, e do segundo em
+   * diante o nome aparece no autocompletar. Escrito errado, sai pela aba
+   * Cadastros.
+   *
+   * Roda depois de o registro estar salvo e nunca reclama: falhar em cadastrar
+   * um nome não pode virar aviso de erro num lançamento que deu certo.
+   */
+  async function aprenderCadastros(dados) {
+    for (const f of CAMPOS_QUE_APRENDEM) {
+      const valor = (dados[f.key] || "").toString().trim();
+      if (!valor) continue;
+      const jaTem = (cadastros[f.cadastroKey] || []).some(
+        (n) => normalizarTexto(n) === normalizarTexto(valor)
+      );
+      if (jaTem) continue;
+      await addCadastro(f.cadastroKey, valor, { avisar: false });
+    }
+  }
+
   async function removeCadastro(tipo, nome) {
     try {
       const r = await fetch(`/api/cadastros?tipo=${encodeURIComponent(tipo)}&nome=${encodeURIComponent(nome)}`, { method: "DELETE" });
       if (!r.ok) throw new Error(await mensagemDeErro(r));
       const data = await r.json();
-      setCadastros({ cirurgioes: data.cirurgioes || [], anestesistas: data.anestesistas || [] });
+      setCadastros(comTodosOsTipos(data));
     } catch (e) {
       console.error(e);
       alert("Não consegui remover o cadastro. Tente de novo.");
@@ -447,6 +494,7 @@ export default function Home() {
 
       salvou = true;
       await loadEntries();
+      await aprenderCadastros(payload);
     } catch (e) {
       console.error(e);
       setErrorMsg(
@@ -733,10 +781,12 @@ export default function Home() {
                 <input style={inputStyle} type="time" value={draft.horaLancamento || ""} onChange={(e) => updateDraft("horaLancamento", e.target.value)} />
               </Field>
 
-              {CAMPOS_DA_GUIA.map((f) => {
-                // O cirurgião vem lido da guia, mas mantém o autocompletar do
-                // cadastro: é assim que se corrige leitura ruim e se padroniza
-                // a grafia do nome.
+              {CAMPOS_DO_REGISTRO.map((f) => {
+                // Campo com cadastro atrás vira autocompletar. O cirurgião vem
+                // lido da guia e mesmo assim mantém o dele: é assim que se
+                // corrige leitura ruim e se padroniza a grafia do nome. O
+                // convênio é digitado, e o que se digita hoje entra na lista
+                // para o lançamento de amanhã.
                 if (f.cadastroKey) {
                   return (
                     <Field key={f.key} label={f.label}>
@@ -1119,13 +1169,7 @@ export default function Home() {
                         {e.cirurgiao ? ` · Dr(a). ${e.cirurgiao}` : ""}
                         {e.anestesista ? ` · Anest. Dr(a). ${e.anestesista}` : ""}
                       </div>
-                      {(e.nCarteira || e.nGuia) && (
-                        <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave, marginTop: 2 }}>
-                          {e.nGuia ? `Nº Guia: ${e.nGuia}` : ""}
-                          {e.nGuia && e.nCarteira ? " · " : ""}
-                          {e.nCarteira ? `Carteira: ${e.nCarteira}` : ""}
-                        </div>
-                      )}
+                      <LinhaDeIdentificacao entry={e} />
                       {(e.procedimentoComplementar || []).length > 0 && (
                         <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 11, color: CORES.principal, marginTop: 4 }}>
                           {e.procedimentoComplementar.join(" · ")}
@@ -1181,6 +1225,17 @@ export default function Home() {
               onImportar={(nomes) => importarCadastros("anestesistas", nomes)}
               onRemove={(nome) => removeCadastro("anestesistas", nome)}
             />
+            {/* Esta lista se enche sozinha, a cada registro salvo. Ela está
+                aqui para o caso contrário: apagar um convênio que entrou
+                escrito errado. */}
+            <CadastroSection
+              title="Convênios"
+              placeholder="Nome do convênio"
+              items={cadastros.convenios}
+              onAdd={(nome) => addCadastro("convenios", nome)}
+              onImportar={(nomes) => importarCadastros("convenios", nomes)}
+              onRemove={(nome) => removeCadastro("convenios", nome)}
+            />
           </div>
         )}
       </div>
@@ -1201,7 +1256,7 @@ export default function Home() {
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <ViewField label="Data do lançamento" value={formatarData(viewingEntry.dataCirurgia)} />
               <ViewField label="Hora do lançamento" value={horaDoRegistro(viewingEntry)} />
-              {CAMPOS_DA_GUIA.map((f) => (
+              {CAMPOS_DO_REGISTRO.map((f) => (
                 <ViewField key={f.key} label={f.label} value={viewingEntry[f.key]} />
               ))}
               <ViewField label="Procedimentos" value={(viewingEntry.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS)} />
@@ -1230,6 +1285,30 @@ export default function Home() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Prontuário, guia, carteira e convênio no cartão da lista.
+ *
+ * Só entra o que o registro tem: registro sem guia (a urgência sem guia) não
+ * pode virar uma linha com rótulo vazio. O convênio vai sem rótulo — o nome
+ * já se identifica sozinho, e a linha inteira precisa caber num celular.
+ */
+function LinhaDeIdentificacao({ entry }) {
+  const partes = [
+    entry.prontuario ? `Prontuário: ${entry.prontuario}` : "",
+    entry.nGuia ? `Nº Guia: ${entry.nGuia}` : "",
+    entry.nCarteira ? `Carteira: ${entry.nCarteira}` : "",
+    entry.convenio || "",
+  ].filter(Boolean);
+
+  if (partes.length === 0) return null;
+
+  return (
+    <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave, marginTop: 2 }}>
+      {partes.join(" · ")}
     </div>
   );
 }

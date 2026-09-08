@@ -4,7 +4,8 @@ import { waitUntil } from "@vercel/functions";
 import { sheetsEnabled, syncAno, pullExecutados } from "../../lib/sheets";
 import { normalizarTexto } from "../../lib/texto";
 import { completarGuia } from "../../lib/guia";
-import { SEPARADOR_PROCEDIMENTOS, CAMPOS_MANUAIS, emCaixaAlta } from "../../lib/campos";
+import { SEPARADOR_PROCEDIMENTOS, CAMPOS_DO_REGISTRO, CAMPOS_MANUAIS, emCaixaAlta } from "../../lib/campos";
+import { comTrava } from "../../lib/trava";
 
 const KEY = "guias:entries";
 
@@ -57,20 +58,8 @@ const TRAVA_ENTRIES = "guias:entries:trava";
  * Se a trava não vier em ~5s, segue sem ela: é melhor arriscar a concorrência
  * do que recusar o registro de um paciente.
  */
-async function comTravaDeEntries(fn) {
-  for (let i = 0; i < 50; i++) {
-    const pegou = await kv.set(TRAVA_ENTRIES, "1", { nx: true, ex: 10 });
-    if (pegou) {
-      try {
-        return await fn();
-      } finally {
-        await kv.del(TRAVA_ENTRIES);
-      }
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  console.error("Trava dos registros não obtida em 5s; seguindo sem ela.");
-  return fn();
+function comTravaDeEntries(fn) {
+  return comTrava(TRAVA_ENTRIES, fn);
 }
 
 /**
@@ -182,10 +171,16 @@ function normalizar(entry) {
   const nomes = Object.fromEntries(
     CAMPOS_MANUAIS.filter((f) => f.maiusculo).map((f) => [f.key, emCaixaAlta(entry[f.key])])
   );
+  // Espaço sobrando no fim de um convênio digitado criaria um segundo
+  // "Unimed " no cadastro e uma segunda grafia na planilha.
+  const textos = Object.fromEntries(
+    CAMPOS_DO_REGISTRO.map((f) => [f.key, (entry[f.key] || "").toString().trim()])
+  );
   return {
     ...entry,
+    ...textos,
     ...nomes,
-    paciente: (entry.paciente || "").toUpperCase(),
+    paciente: (entry.paciente || "").trim().toUpperCase(),
     procedimentos: (entry.procedimentos || [])
       .map((p) => (p || "").toString().trim().toUpperCase())
       .filter(Boolean),
