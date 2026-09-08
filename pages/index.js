@@ -1203,7 +1203,11 @@ export default function Home() {
                           o convênio percorrendo a lista, sem parar para ler.
                           Convênio fora da lista de cores fica na cor normal. */}
                       <div style={{ fontSize: 16, lineHeight: 1.35, color: corDoConvenio(e.convenio) || CORES.tinta }}>
-                        {e.paciente || "(sem nome)"}
+                        {/* O respiro entre nome e selo é margem à DIREITA do
+                            nome, e não à esquerda do selo: assim ele some junto
+                            com a quebra quando o selo cai sozinho na linha
+                            seguinte, em vez de virar um recuo. */}
+                        <span style={{ marginRight: e.urgencia ? 8 : 0 }}>{e.paciente || "(sem nome)"}</span>
                         {e.urgencia && (
                           <span
                             style={{
@@ -1211,7 +1215,6 @@ export default function Home() {
                               verticalAlign: "middle",
                               position: "relative",
                               top: -1,
-                              marginLeft: 8,
                               padding: "2px 7px",
                               borderRadius: 9,
                               background: CORES.alertaFundo,
