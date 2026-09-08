@@ -1,7 +1,7 @@
 import { kv } from "../../lib/kv";
 import { randomUUID } from "crypto";
 import { waitUntil } from "@vercel/functions";
-import { sheetsEnabled, syncAno, pullExecutados } from "../../lib/sheets";
+import { sheetsEnabled, syncAno, pullDaPlanilha } from "../../lib/sheets";
 import { normalizarTexto } from "../../lib/texto";
 import { SEPARADOR_PROCEDIMENTOS } from "../../lib/campos";
 import { normalizarRegistro } from "../../lib/registro";
@@ -12,9 +12,9 @@ const KEY = "guias:entries";
 /**
  * Espelha no Google Sheets os anos afetados por uma alteração.
  *
- * Antes de reescrever as abas, recolhe os "Executado" que tenham sido mudados
- * direto na planilha — senão a reescrita apagaria essas edições. O registro que
- * acabou de ser mexido no app fica de fora dessa leitura, para o app vencer.
+ * Antes de reescrever as abas, recolhe o que tenha sido editado direto na
+ * planilha — senão a reescrita apagaria essas edições. O registro que acabou
+ * de ser mexido no app fica de fora dessa leitura, para o app vencer.
  *
  * Nunca lança: uma falha na planilha não pode derrubar o registro no app.
  */
@@ -23,7 +23,7 @@ async function espelharNoSheets(entries, anos, idsDoApp = []) {
 
   let atuais = entries;
   try {
-    const { entries: mesclados, mudancas } = await pullExecutados(entries, idsDoApp);
+    const { entries: mesclados, mudancas } = await pullDaPlanilha(entries, idsDoApp);
     if (mudancas.length > 0) {
       atuais = mesclados;
       await kv.set(KEY, atuais);

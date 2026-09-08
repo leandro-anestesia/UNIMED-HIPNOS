@@ -1,5 +1,5 @@
 import { kv } from "../../lib/kv";
-import { sheetsEnabled, syncTudo, pullExecutados } from "../../lib/sheets";
+import { sheetsEnabled, syncTudo, pullDaPlanilha } from "../../lib/sheets";
 import { normalizarRegistro, mudouNaNormalizacao } from "../../lib/registro";
 
 const KEY = "guias:entries";
@@ -35,8 +35,10 @@ export default async function handler(req, res) {
 
     // Primeiro traz o que foi editado direto na planilha, depois reescreve.
     let mudancas = [];
+    let recusadas = [];
     try {
-      const resultado = await pullExecutados(entries);
+      const resultado = await pullDaPlanilha(entries);
+      recusadas = resultado.recusadas;
       if (resultado.mudancas.length > 0) {
         entries = resultado.entries;
         mudancas = resultado.mudancas;
@@ -52,6 +54,7 @@ export default async function handler(req, res) {
       configurado: true,
       registros: entries.length,
       importadosDaPlanilha: mudancas,
+      recusadas,
       guiasCompletadas,
       planilhas: Object.fromEntries(
         Object.entries(sincronizados).map(([ano, id]) => [ano, `https://docs.google.com/spreadsheets/d/${id}`])

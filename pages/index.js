@@ -613,15 +613,31 @@ export default function Home() {
       const r = await fetch("/api/sync-sheets", { method: "POST" });
       const data = await r.json();
       await loadEntries();
-      const vindos = (data.importadosDaPlanilha || []).length;
+
+      const vindos = data.importadosDaPlanilha || [];
+      const novos = vindos.filter((m) => m.tipo === "novo").length;
+      const alterados = vindos.length - novos;
+
+      const trouxe = [];
+      if (alterados > 0) trouxe.push(`${alterados} registro(s) alterado(s) na planilha`);
+      if (novos > 0) trouxe.push(`${novos} lançamento(s) digitado(s) na planilha`);
+
+      // O que a planilha mudou e o app não pôde aceitar precisa aparecer: em
+      // silêncio, a pessoa acharia que a correção dela valeu.
+      const recusadas = data.recusadas || [];
+      const aviso = recusadas.length
+        ? "\n\nNão consegui aceitar:\n" +
+          recusadas.map((x) => `· ${x.paciente || "(sem nome)"} — ${x.coluna}: ${x.motivo}`).join("\n")
+        : "";
+
       if (data.configurado === false) {
         alert("A planilha do Google ainda não está configurada.");
       } else if (!data.ok) {
         alert("Sincronizado com pendências:\n" + JSON.stringify(data.falhas || {}, null, 2));
-      } else if (vindos > 0) {
-        alert(`Planilha sincronizada. ${vindos} registro(s) atualizado(s) a partir dela.`);
+      } else if (trouxe.length > 0) {
+        alert(`Planilha sincronizada. Trouxe ${trouxe.join(" e ")}.${aviso}`);
       } else {
-        alert("Planilha sincronizada. Nada novo vindo dela.");
+        alert(`Planilha sincronizada. Nada novo vindo dela.${aviso}`);
       }
     } catch (e) {
       console.error(e);
