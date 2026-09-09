@@ -10,6 +10,7 @@ import {
   COLUNAS,
   COLUNAS_PARTICULAR,
   ehParticular,
+  ehUnimed,
   SEPARADOR_PROCEDIMENTOS,
   temCarimbo,
   TIPOS_DE_CADASTRO,
@@ -380,8 +381,10 @@ export default function Home() {
       if (!r.ok) throw new Error(parsed.error || "Falha na extração");
 
       // A guia às vezes chega sem o último dígito: completa já aqui, que é o
-      // momento do "lançar a guia", e mostra o que aconteceu.
-      const guia = analisarGuia(parsed.nGuia);
+      // momento do "lançar a guia", e mostra o que aconteceu. Só na Unimed: o
+      // dígito verificador é regra dela, e conferir a guia das outras
+      // operadoras por essa régua reprovaria número bom.
+      const guia = ehUnimed(parsed) ? analisarGuia(parsed.nGuia) : { estado: "vazia", numero: parsed.nGuia || "" };
       setGuiaInfo(guia.estado === "vazia" ? null : guia);
       // A caixa alta é aplicada aqui, e não só na gravação: a tela de
       // conferência tem de mostrar o texto como ele vai ficar na planilha.
@@ -572,8 +575,9 @@ export default function Home() {
     });
     setEditingId(entry.id);
     setImagePreview(null);
-    // Mostra logo de cara se a guia já gravada tem algum problema.
-    const g = analisarGuia(entry.nGuia);
+    // Mostra logo de cara se a guia já gravada tem algum problema — de novo,
+    // só na Unimed.
+    const g = ehUnimed(entry) ? analisarGuia(entry.nGuia) : { estado: "vazia" };
     setGuiaInfo(g.estado === "vazia" ? null : g);
     setStatus("review");
   }
@@ -652,6 +656,11 @@ export default function Home() {
   // A busca tem prioridade sobre o mês: procurar um paciente de julho com
   // agosto selecionado precisa achar, senão parece que o registro sumiu.
   const buscando = normalizarTexto(searchQuery).length > 0;
+  // O aviso da guia só aparece enquanto o convênio for Unimed. Sem isto, quem
+  // conferisse a guia e depois trocasse o convênio ficaria com um aviso preso
+  // na tela, falando de uma regra que não vale para o convênio novo.
+  const avisoDaGuia = ehUnimed(draft) ? guiaInfo : null;
+
   const registrosVisiveis = entries
     .filter((e) => entryMatchesSearch(e, searchQuery))
     .filter((e) => buscando || mesSelecionado === TODOS_OS_MESES || !mesSelecionado || chaveDoMes(e) === mesSelecionado)
@@ -919,7 +928,7 @@ export default function Home() {
                         <Field label={f.label}>
                           <input
                             style={
-                              guiaInfo && guiaInfo.estado !== "valida" && guiaInfo.estado !== "completada"
+                              avisoDaGuia && avisoDaGuia.estado !== "valida" && avisoDaGuia.estado !== "completada"
                                 ? { ...inputStyle, border: `1px solid ${CORES.alerta}`, background: CORES.alertaFundo }
                                 : inputStyle
                             }
@@ -932,6 +941,7 @@ export default function Home() {
                             // No blur, e não a cada tecla: completar durante a
                             // digitação faria o dígito brotar no meio do número.
                             onBlur={(e) => {
+                              if (!ehUnimed(draft)) return;
                               const r = analisarGuia(e.target.value);
                               setGuiaInfo(r.estado === "vazia" ? null : r);
                               if (r.numero !== e.target.value) updateDraft(f.key, r.numero);
@@ -969,18 +979,18 @@ export default function Home() {
                       </label>
                     </div>
 
-                    {guiaInfo && guiaInfo.mensagem && (
+                    {avisoDaGuia && avisoDaGuia.mensagem && (
                       <div
                         style={{
                           marginTop: 6,
                           fontFamily: "Helvetica, Arial, sans-serif",
                           fontSize: 12,
                           color:
-                            guiaInfo.estado === "valida" || guiaInfo.estado === "completada" ? CORES.principal : CORES.alerta,
+                            avisoDaGuia.estado === "valida" || avisoDaGuia.estado === "completada" ? CORES.principal : CORES.alerta,
                         }}
                       >
-                        {guiaInfo.estado === "valida" || guiaInfo.estado === "completada" ? "✓ " : "⚠ "}
-                        {guiaInfo.mensagem}
+                        {avisoDaGuia.estado === "valida" || avisoDaGuia.estado === "completada" ? "✓ " : "⚠ "}
+                        {avisoDaGuia.mensagem}
                       </div>
                     )}
                   </div>
