@@ -105,7 +105,7 @@ function entryMatchesSearch(e, query) {
   const q = normalizarTexto(query);
   if (!q) return true;
   const textos = [
-    e.prontuario,
+    e.atendimento,
     e.paciente,
     e.convenio,
     e.cirurgiao,
@@ -1408,7 +1408,7 @@ export default function Home() {
 }
 
 /**
- * Prontuário, guia, carteira e convênio no cartão da lista.
+ * Atendimento, guia, carteira e convênio no cartão da lista.
  *
  * Só entra o que o registro tem: registro sem guia (a urgência sem guia) não
  * pode virar uma linha com rótulo vazio. O convênio vai sem rótulo — o nome
@@ -1416,7 +1416,7 @@ export default function Home() {
  */
 function LinhaDeIdentificacao({ entry }) {
   const numeros = [
-    entry.prontuario ? `Prontuário: ${entry.prontuario}` : "",
+    entry.atendimento ? `Atendimento: ${entry.atendimento}` : "",
     entry.nGuia ? `Nº Guia: ${entry.nGuia}` : "",
     entry.nCarteira ? `Carteira: ${entry.nCarteira}` : "",
   ].filter(Boolean);

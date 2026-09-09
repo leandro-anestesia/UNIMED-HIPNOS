@@ -24,7 +24,7 @@ const PROMPT = `Esta é a foto de uma guia de convênio médico brasileira no pa
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
-  "prontuario": "",
+  "atendimento": "",
   "paciente": "",
   "convenio": "",
   "nGuia": "",
@@ -35,8 +35,8 @@ Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatament
 
 Como preencher cada campo:
 
-- "prontuario": o número do prontuário do paciente, quando a guia trouxer. Procure pelo rótulo — "Prontuário", "Prontuario", "Nº do Prontuário", "Pront." — em qualquer lugar da folha, inclusive em carimbo, etiqueta ou cabeçalho impresso pelo hospital. Devolva só o número, como está escrito, com os zeros à esquerda se houver.
-  NÃO use o número da guia, o da carteira, o do atendimento, o da senha nem o "7 - Número da Carteira". Se não houver campo de prontuário na folha, devolva "".
+- "atendimento": o número do atendimento, quando a guia trouxer. Procure pelo rótulo — "Atendimento", "Nº do Atendimento", "Atend." — em qualquer lugar da folha, inclusive em carimbo, etiqueta ou cabeçalho impresso pelo hospital. Devolva só o número, como está escrito, com os zeros à esquerda se houver.
+  NÃO use o número da guia, o da carteira, o da senha, o do prontuário nem o "7 - Número da Carteira": são números vizinhos e parecidos. Se não houver campo de atendimento na folha, devolva "".
 
 - "convenio": o nome do convênio (a operadora do plano de saúde do paciente — quem paga).
   Procure primeiro um campo rotulado "Convênio", "Convenio", "Operadora" ou "Plano". O valor costuma vir como CÓDIGO seguido de traço e nome, assim: "0110 - UNIMED CAMPINAS". Devolva SÓ O NOME, sem o código e sem o traço — no exemplo, "UNIMED CAMPINAS".
@@ -190,7 +190,7 @@ export default async function handler(req, res) {
       : [];
 
     return res.status(200).json({
-      prontuario: (parsed.prontuario || "").toString().trim(),
+      atendimento: (parsed.atendimento || "").toString().trim(),
       paciente: parsed.paciente || "",
       convenio: nomeDoConvenio(parsed.convenio),
       nGuia: parsed.nGuia || "",
