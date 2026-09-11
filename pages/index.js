@@ -1006,40 +1006,76 @@ export default function Home() {
         {status === "idle" && activeTab === "novo" && (
           // Empilhados e do mesmo tamanho: numa tela de celular, três alvos
           // largos e bem separados erram menos que dois espremidos lado a lado.
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {/* O local vem antes dos botões porque é a primeira decisão: o que
-                se fotografa num lugar não vale no outro. Fica escolhido até
-                alguém trocar, e marcado à vista para não passar despercebido. */}
-            <SeletorDeLocal
-              locais={cadastros.locais || []}
-              selecionado={localAtivo}
-              onSelecionar={escolherLocal}
-            />
-            <button
-              onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
-              style={btnEmpilhado(btnPrimary)}
-            >
-              📷 Fotografar guia
-            </button>
-            <button
-              onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
-              style={btnEmpilhado(btnSecondary)}
-            >
-              🖼 Da galeria
-            </button>
-            <button onClick={startManual} style={btnEmpilhado(btnSecondary)}>
-              ✏️ Preencher manualmente
-            </button>
-            {/* Uma foto, vários pacientes. Só faz sentido onde existe mapa do
-                dia, que é a clínica — daí aparecer com o local escolhido. */}
-            {localAtivo && (
+                se fotografa num lugar não vale no outro.
+
+                Num seletor, e não em fichas: os nomes das clínicas são longos e
+                viravam três linhas de retângulos arredondados, indistinguíveis
+                dos botões logo abaixo. Aqui ocupa uma linha, mostra o escolhido
+                sem abrir nada, e cabe qualquer número de clínicas. */}
+            {(cadastros.locais || []).length > 0 && (
+              <Field label="Local">
+                <select
+                  value={localAtivo}
+                  onChange={(ev) => escolherLocal(ev.target.value)}
+                  style={{
+                    ...inputStyle,
+                    fontWeight: localAtivo ? 600 : 400,
+                    color: localAtivo ? CORES.escura : CORES.tinta,
+                    background: localAtivo ? CORES.clara : "white",
+                    borderColor: localAtivo ? CORES.principal : CORES.borda,
+                  }}
+                >
+                  <option value="">{HOSPITAL}</option>
+                  {(cadastros.locais || []).map((local) => (
+                    <option key={local} value={local}>
+                      {local}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+
+            {/* Um primário só, e o resto discreto: com quatro botões do mesmo
+                peso, a tela vira uma lista de retângulos e nenhum é o caminho
+                óbvio. Na clínica, o caminho óbvio é o mapa; no hospital, a
+                guia. */}
+            {localAtivo ? (
               <button
                 onClick={() => mapaInputRef.current && mapaInputRef.current.click()}
-                style={btnEmpilhado(btnSecondary)}
+                style={btnEmpilhado(btnPrimary)}
               >
                 📋 Ler mapa cirúrgico
               </button>
+            ) : (
+              <button
+                onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
+                style={btnEmpilhado(btnPrimary)}
+              >
+                📷 Fotografar guia
+              </button>
             )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {localAtivo && (
+                <button
+                  onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
+                  style={btnEmpilhado(btnDiscreto)}
+                >
+                  📷 Fotografar etiqueta ou guia
+                </button>
+              )}
+              <button
+                onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
+                style={btnEmpilhado(btnDiscreto)}
+              >
+                🖼 Da galeria
+              </button>
+              <button onClick={startManual} style={btnEmpilhado(btnDiscreto)}>
+                ✏️ Preencher manualmente
+              </button>
+            </div>
           </div>
         )}
 
@@ -1549,16 +1585,33 @@ export default function Home() {
             {/* Durante a busca o seletor fica esmaecido e sem efeito,
                 porque a procura roda em todos os meses. */}
             {/* O filtro de local só aparece quando existe clínica lançada: no
-                uso só do hospital ele seria uma linha sem função. */}
+                uso só do hospital ele seria uma linha sem função.
+
+                Num seletor, como na tela inicial: nome de clínica é longo, e em
+                fichas ele empurra o seletor de mês para baixo em três linhas. */}
             {locaisComRegistro.length > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                <SeletorDeLocal
-                  locais={locaisComRegistro}
-                  selecionado={localFiltro}
-                  onSelecionar={setLocalFiltro}
-                  comTodos
-                />
-              </div>
+              <select
+                value={localFiltro}
+                onChange={(ev) => setLocalFiltro(ev.target.value)}
+                style={{
+                  ...inputStyle,
+                  marginBottom: 10,
+                  fontFamily: "Helvetica, Arial, sans-serif",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: localFiltro === TODOS_OS_LOCAIS ? CORES.suave : CORES.escura,
+                  background: localFiltro === TODOS_OS_LOCAIS ? "white" : CORES.clara,
+                  borderColor: localFiltro === TODOS_OS_LOCAIS ? CORES.borda : CORES.principal,
+                }}
+              >
+                <option value={TODOS_OS_LOCAIS}>Todos os locais</option>
+                <option value="">{HOSPITAL}</option>
+                {locaisComRegistro.map((local) => (
+                  <option key={local} value={local}>
+                    {local}
+                  </option>
+                ))}
+              </select>
             )}
 
             {meses.length > 0 && (
@@ -2002,41 +2055,6 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
  * isso só entram os 2 mais recentes, mais o mês escolhido quando ele estiver
  * fora desses, e a grade cobre qualquer mês de qualquer ano.
  */
-/**
- * Escolha do local, em fichas.
- *
- * Mesma linguagem do seletor de mês, que já está na tela ao lado: numa tela de
- * celular, ficha lado a lado se toca melhor do que um menu, e o que está
- * escolhido fica à vista sem abrir nada.
- *
- * "Hospital" é o local vazio — é o caso mais comum, e por isso vem primeiro e
- * já nasce marcado.
- */
-function SeletorDeLocal({ locais, selecionado, onSelecionar, comTodos = false }) {
-  const opcoes = [
-    ...(comTodos ? [{ valor: TODOS_OS_LOCAIS, rotulo: "Todos" }] : []),
-    { valor: "", rotulo: HOSPITAL },
-    ...locais.map((local) => ({ valor: local, rotulo: local })),
-  ];
-
-  // Com uma opção só (nenhuma clínica cadastrada) não há escolha a fazer.
-  if (opcoes.length <= 1) return null;
-
-  return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      {opcoes.map((o) => (
-        <button
-          key={o.valor || "hospital"}
-          onClick={() => onSelecionar(o.valor)}
-          style={{ ...chipMes, ...(selecionado === o.valor ? chipMesAtivo : null) }}
-        >
-          {o.rotulo}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, desabilitado }) {
   const [aberta, setAberta] = useState(false);
   const wrapperRef = useRef(null);
@@ -2335,6 +2353,25 @@ const btnSecondary = {
   fontFamily: "Helvetica, Arial, sans-serif",
   fontWeight: 500,
   fontSize: 15,
+  cursor: "pointer",
+};
+
+/**
+ * Botão de caminho alternativo: mesma largura do principal, menos peso.
+ *
+ * A diferença é altura e cor, não tamanho da fonte — o alvo continua grande o
+ * bastante para o dedo, que é o que importa numa tela de centro cirúrgico.
+ */
+const btnDiscreto = {
+  flex: 1,
+  padding: "12px 16px",
+  borderRadius: 8,
+  background: "white",
+  color: CORES.suave,
+  border: `1px solid ${CORES.borda}`,
+  fontFamily: "Helvetica, Arial, sans-serif",
+  fontWeight: 500,
+  fontSize: 14,
   cursor: "pointer",
 };
 
