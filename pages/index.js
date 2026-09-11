@@ -64,6 +64,15 @@ const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julh
 
 const TODOS_OS_MESES = "todos";
 
+/** O filtro de local da lista, quando nenhum está escolhido. */
+const TODOS_OS_LOCAIS = "todos";
+
+/** Onde o aparelho guarda o local escolhido na tela inicial. */
+const LOCAL_GUARDADO = "guias:local";
+
+/** Como o hospital aparece onde é preciso nomeá-lo: no app ele é o local vazio. */
+const HOSPITAL = "Hospital";
+
 /** Chave "AAAA-MM" do lançamento, usada para agrupar por mês. */
 function chaveDoMes(entry) {
   return (entry.dataCirurgia || "").slice(0, 7);
@@ -229,6 +238,19 @@ export default function Home() {
   const [salvando, setSalvando] = useState(false);
   const salvandoRef = useRef(false);
   const [guiaInfo, setGuiaInfo] = useState(null);
+  /**
+   * O local escolhido na tela inicial, que vale para o próximo lançamento.
+   *
+   * Quem está na clínica lança vários seguidos; escolher o local em cada um
+   * seria um toque a mais toda vez. Fica guardado no aparelho para sobreviver
+   * ao recarregar, e aparece marcado na tela inicial — é o que impede lançar
+   * um caso do hospital achando que o local ainda está vazio.
+   */
+  const [localAtivo, setLocalAtivo] = useState("");
+  // Qual cartão da lista está aberto. Um de cada vez: a lista existe para
+  // percorrer, e vários abertos a transformariam de novo num paredão.
+  const [expandido, setExpandido] = useState(null);
+  const [localFiltro, setLocalFiltro] = useState(TODOS_OS_LOCAIS);
   const [errorMsg, setErrorMsg] = useState("");
   // Lista vazia e lista que não carregou são idênticas na tela, e a segunda
   // faria o anestesista concluir que o lançamento dele sumiu.
@@ -275,6 +297,26 @@ export default function Home() {
     loadEntries();
     loadCadastros();
   }, [loadEntries, loadCadastros]);
+
+  // Só depois de montar: no servidor não existe localStorage, e ler lá quebraria
+  // a renderização da página.
+  useEffect(() => {
+    try {
+      setLocalAtivo(window.localStorage.getItem(LOCAL_GUARDADO) || "");
+    } catch {
+      // aparelho com armazenamento bloqueado: segue sem lembrar a escolha
+    }
+  }, []);
+
+  function escolherLocal(local) {
+    setLocalAtivo(local);
+    try {
+      if (local) window.localStorage.setItem(LOCAL_GUARDADO, local);
+      else window.localStorage.removeItem(LOCAL_GUARDADO);
+    } catch {
+      // idem: não lembrar é menos grave do que não deixar escolher
+    }
+  }
 
   // Memoizado porque entra na dependência do efeito abaixo: recriar o array a
   // cada render faria o efeito rodar sem necessidade.
@@ -401,6 +443,7 @@ export default function Home() {
         ...emptyDraft(),
         ...parsed,
         ...emCaixa,
+        local: localAtivo,
         nGuia: guia.numero,
         procedimentos: paraLinhas(parsed.procedimentos),
       });
@@ -562,7 +605,7 @@ export default function Home() {
 
   function startManual() {
     setErrorMsg("");
-    setDraft(emptyDraft());
+    setDraft({ ...emptyDraft(), local: localAtivo });
     setImagePreview(null);
     setEditingId(null);
     setGuiaInfo(null);
@@ -664,7 +707,12 @@ export default function Home() {
   // na tela, falando de uma regra que não vale para o convênio novo.
   const avisoDaGuia = ehUnimed(draft) ? guiaInfo : null;
 
+  // Os locais que aparecem nos registros, para o filtro da lista não oferecer
+  // clínica onde nunca se lançou nada.
+  const locaisComRegistro = [...new Set(entries.map((e) => (e.local || "").trim()).filter(Boolean))].sort();
+
   const registrosVisiveis = entries
+    .filter((e) => localFiltro === TODOS_OS_LOCAIS || (e.local || "").trim() === localFiltro)
     .filter((e) => entryMatchesSearch(e, searchQuery))
     .filter((e) => buscando || mesSelecionado === TODOS_OS_MESES || !mesSelecionado || chaveDoMes(e) === mesSelecionado)
     .sort(ordenarPorData);
@@ -806,6 +854,14 @@ export default function Home() {
           // Empilhados e do mesmo tamanho: numa tela de celular, três alvos
           // largos e bem separados erram menos que dois espremidos lado a lado.
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            {/* O local vem antes dos botões porque é a primeira decisão: o que
+                se fotografa num lugar não vale no outro. Fica escolhido até
+                alguém trocar, e marcado à vista para não passar despercebido. */}
+            <SeletorDeLocal
+              locais={cadastros.locais || []}
+              selecionado={localAtivo}
+              onSelecionar={escolherLocal}
+            />
             <button
               onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
               style={btnEmpilhado(btnPrimary)}
@@ -1215,6 +1271,19 @@ export default function Home() {
 
             {/* Durante a busca o seletor fica esmaecido e sem efeito,
                 porque a procura roda em todos os meses. */}
+            {/* O filtro de local só aparece quando existe clínica lançada: no
+                uso só do hospital ele seria uma linha sem função. */}
+            {locaisComRegistro.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <SeletorDeLocal
+                  locais={locaisComRegistro}
+                  selecionado={localFiltro}
+                  onSelecionar={setLocalFiltro}
+                  comTodos
+                />
+              </div>
+            )}
+
             {meses.length > 0 && (
               <SeletorDeMes
                 meses={meses}
@@ -1261,88 +1330,108 @@ export default function Home() {
                   Nenhum registro encontrado para essa busca.
                 </div>
               )}
-              {registrosVisiveis.map((e) => (
+              {registrosVisiveis.map((e) => {
+                const aberto = expandido === e.id;
+
+                return (
                 <div
                   key={e.id}
-                  onClick={() => setViewingEntry(e)}
-                  style={{ border: `1px solid ${CORES.borda}`, borderRadius: 6, background: "white", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, cursor: "pointer" }}
+                  style={{ border: `1px solid ${CORES.borda}`, borderRadius: 6, background: "white", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <div>
-                      {/* O selo anda no meio do texto, e não como item de flex:
-                          num nome comprido, que ocupa a linha inteira do
-                          celular, o item de flex ia parar sozinho na linha de
-                          baixo, longe do nome. Aqui ele segue a última palavra,
-                          e quem o levanta até o meio da linha é o
-                          verticalAlign — sem ele o selo se alinha pela base da
-                          letra e encosta na linha seguinte. */}
-                      {/* A cor do convênio no nome: é o que deixa reconhecer
-                          o convênio percorrendo a lista, sem parar para ler.
-                          Convênio fora da lista de cores fica na cor normal. */}
-                      <div style={{ fontSize: 16, lineHeight: 1.35, color: corDoConvenio(e.convenio) || CORES.tinta }}>
-                        {/* O respiro entre nome e selo é margem à DIREITA do
-                            nome, e não à esquerda do selo: assim ele some junto
-                            com a quebra quando o selo cai sozinho na linha
-                            seguinte, em vez de virar um recuo. */}
-                        <span style={{ marginRight: e.urgencia ? 8 : 0 }}>{e.paciente || "(sem nome)"}</span>
-                        {e.urgencia && (
-                          <span
-                            style={{
-                              display: "inline-block",
-                              verticalAlign: "middle",
-                              position: "relative",
-                              top: -1,
-                              padding: "2px 7px",
-                              borderRadius: 9,
-                              background: CORES.alertaFundo,
-                              color: CORES.alerta,
-                              border: `1px solid ${CORES.alerta}`,
-                              fontFamily: "Helvetica, Arial, sans-serif",
-                              fontSize: 9,
-                              lineHeight: "13px",
-                              letterSpacing: "0.04em",
-                              fontWeight: 600,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            URGÊNCIA
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave, marginTop: 2 }}>
-                        {formatarData(e.dataCirurgia)}
-                        {horaDoRegistro(e) ? ` · ${horaDoRegistro(e)}` : ""}
-                        {e.cirurgiao ? ` · Dr(a). ${e.cirurgiao}` : ""}
-                        {e.anestesista ? ` · Anest. Dr(a). ${e.anestesista}` : ""}
-                      </div>
-                      <LinhaDeIdentificacao entry={e} />
-                      {(e.procedimentoComplementar || []).length > 0 && (
-                        <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 11, color: CORES.principal, marginTop: 4 }}>
-                          {e.procedimentoComplementar.join(" · ")}
-                        </div>
+                  {/* Fechado, o cartão mostra só o nome: a lista existe para
+                      percorrer procurando um paciente, e o resto dos dados
+                      transformava cada rolagem num paredão de texto. */}
+                  <div
+                    onClick={() => setExpandido(aberto ? null : e.id)}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer" }}
+                  >
+                    {/* A cor do convênio no nome: é o que deixa reconhecer o
+                        convênio percorrendo a lista, sem parar para ler.
+                        Convênio fora da lista de cores fica na cor normal. */}
+                    <div style={{ fontSize: 16, lineHeight: 1.35, color: corDoConvenio(e.convenio) || CORES.tinta, minWidth: 0 }}>
+                      {/* O respiro entre nome e selo é margem à DIREITA do
+                          nome, e não à esquerda do selo: assim ele some junto
+                          com a quebra quando o selo cai sozinho na linha
+                          seguinte, em vez de virar um recuo. */}
+                      <span style={{ marginRight: e.urgencia ? 8 : 0 }}>{e.paciente || "(sem nome)"}</span>
+                      {e.urgencia && (
+                        <span
+                          style={{
+                            display: "inline-block",
+                            verticalAlign: "middle",
+                            position: "relative",
+                            top: -1,
+                            padding: "2px 7px",
+                            borderRadius: 9,
+                            background: CORES.alertaFundo,
+                            color: CORES.alerta,
+                            border: `1px solid ${CORES.alerta}`,
+                            fontFamily: "Helvetica, Arial, sans-serif",
+                            fontSize: 9,
+                            lineHeight: "13px",
+                            letterSpacing: "0.04em",
+                            fontWeight: 600,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          URGÊNCIA
+                        </span>
                       )}
                     </div>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <button onClick={(ev) => { ev.stopPropagation(); startEdit(e); }} style={iconBtn}>✎</button>
-                      <button onClick={(ev) => { ev.stopPropagation(); deleteEntry(e.id); }} style={{ ...iconBtn, color: CORES.alerta }}>🗑</button>
+
+                    {/* O executado continua visível de fora: é o estado que se
+                        procura percorrendo a lista, e abrir cartão por cartão
+                        para vê-lo desfaria a serventia de fechar. */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      {e.executado === true && (
+                        <span style={{ color: CORES.principal, fontSize: 14, fontWeight: 700 }}>✓</span>
+                      )}
+                      <span style={{ color: CORES.tenue, fontSize: 11 }}>{aberto ? "▲" : "▼"}</span>
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, borderTop: `1px solid ${CORES.bordaSuave}` }}>
-                    <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, flex: 1, paddingRight: 8 }}>
-                      {(e.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS) || "(sem procedimento)"}
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={(ev) => { ev.stopPropagation(); updateExecutado(e, true); }} style={e.executado === true ? execBtnYesActive : execBtn}>
-                        Sim
-                      </button>
-                      <button onClick={(ev) => { ev.stopPropagation(); updateExecutado(e, false); }} style={e.executado !== true ? execBtnNoActive : execBtn}>
-                        Não
-                      </button>
-                    </div>
-                  </div>
+                  {aberto && (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>
+                            {formatarData(e.dataCirurgia)}
+                            {horaDoRegistro(e) ? ` · ${horaDoRegistro(e)}` : ""}
+                            {e.cirurgiao ? ` · Dr(a). ${e.cirurgiao}` : ""}
+                            {e.anestesista ? ` · Anest. Dr(a). ${e.anestesista}` : ""}
+                          </div>
+                          <LinhaDeIdentificacao entry={e} />
+                          {(e.procedimentoComplementar || []).length > 0 && (
+                            <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 11, color: CORES.principal, marginTop: 4 }}>
+                              {e.procedimentoComplementar.join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                          <button onClick={() => setViewingEntry(e)} style={iconBtn} title="Ver tudo">⋯</button>
+                          <button onClick={() => startEdit(e)} style={iconBtn}>✎</button>
+                          <button onClick={() => deleteEntry(e.id)} style={{ ...iconBtn, color: CORES.alerta }}>🗑</button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, borderTop: `1px solid ${CORES.bordaSuave}` }}>
+                        <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, flex: 1, paddingRight: 8 }}>
+                          {(e.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS) || "(sem procedimento)"}
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => updateExecutado(e, true)} style={e.executado === true ? execBtnYesActive : execBtn}>
+                            Sim
+                          </button>
+                          <button onClick={() => updateExecutado(e, false)} style={e.executado !== true ? execBtnNoActive : execBtn}>
+                            Não
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1636,6 +1725,41 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
  * isso só entram os 2 mais recentes, mais o mês escolhido quando ele estiver
  * fora desses, e a grade cobre qualquer mês de qualquer ano.
  */
+/**
+ * Escolha do local, em fichas.
+ *
+ * Mesma linguagem do seletor de mês, que já está na tela ao lado: numa tela de
+ * celular, ficha lado a lado se toca melhor do que um menu, e o que está
+ * escolhido fica à vista sem abrir nada.
+ *
+ * "Hospital" é o local vazio — é o caso mais comum, e por isso vem primeiro e
+ * já nasce marcado.
+ */
+function SeletorDeLocal({ locais, selecionado, onSelecionar, comTodos = false }) {
+  const opcoes = [
+    ...(comTodos ? [{ valor: TODOS_OS_LOCAIS, rotulo: "Todos" }] : []),
+    { valor: "", rotulo: HOSPITAL },
+    ...locais.map((local) => ({ valor: local, rotulo: local })),
+  ];
+
+  // Com uma opção só (nenhuma clínica cadastrada) não há escolha a fazer.
+  if (opcoes.length <= 1) return null;
+
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {opcoes.map((o) => (
+        <button
+          key={o.valor || "hospital"}
+          onClick={() => onSelecionar(o.valor)}
+          style={{ ...chipMes, ...(selecionado === o.valor ? chipMesAtivo : null) }}
+        >
+          {o.rotulo}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, desabilitado }) {
   const [aberta, setAberta] = useState(false);
   const wrapperRef = useRef(null);
