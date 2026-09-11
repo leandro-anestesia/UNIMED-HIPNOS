@@ -163,6 +163,52 @@ function acharDuplicata(entries, novo) {
   );
 }
 
+/**
+ * Grava vários registros numa tacada só — é o mapa cirúrgico virando lista.
+ *
+ * Tudo sob a mesma trava e um espelhamento só: vinte lançamentos disparando
+ * vinte sincronizações faria o mesmo trabalho vinte vezes, e a planilha
+ * reescreve o mês inteiro de qualquer jeito.
+ *
+ * Duplicata aqui não pergunta, some. Quem fotografa o mesmo mapa duas vezes
+ * não vai responder vinte confirmações seguidas — a resposta diz quantos
+ * foram pulados e quem eram.
+ */
+async function lancarLote(brutos, res) {
+  const novos = brutos.map((dados) =>
+    normalizarRegistro({ ...dados, id: randomUUID(), criadoEm: new Date().toISOString() })
+  );
+
+  const { gravados, duplicados } = await comTravaDeEntries(async () => {
+    const entries = (await kv.get(KEY)) || [];
+    const gravados = [];
+    const duplicados = [];
+
+    for (const entry of novos) {
+      // Compara contra a lista que vai crescendo: pega também o mapa que traz o
+      // mesmo paciente duas vezes.
+      if (acharDuplicata(entries, entry)) {
+        duplicados.push(entry.paciente);
+        continue;
+      }
+      entries.unshift(entry);
+      gravados.push(entry);
+    }
+
+    if (gravados.length > 0) await kv.set(KEY, entries);
+    return { gravados, duplicados };
+  });
+
+  if (gravados.length > 0) {
+    espelharDepoisDeResponder(
+      gravados.map(anoDe),
+      gravados.map((e) => e.id)
+    );
+  }
+
+  return res.status(200).json({ gravados: gravados.length, duplicados });
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
@@ -171,6 +217,11 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
+      // Lote: a foto de um mapa cirúrgico vira vários lançamentos de uma vez.
+      if (Array.isArray((req.body || {}).registros)) {
+        return lancarLote(req.body.registros, res);
+      }
+
       const { confirmarDuplicado, ...dados } = req.body || {};
       const entry = normalizarRegistro({ ...dados, id: randomUUID(), criadoEm: new Date().toISOString() });
 

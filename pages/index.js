@@ -19,7 +19,14 @@ import {
   TIPOS_DE_CADASTRO,
   valorDaColuna,
 } from "../lib/campos";
-import { agoraLocal, dataHoraDoInstante, duracaoEntre, formatarData, horaDoRegistro } from "../lib/tempo";
+import {
+  agoraLocal,
+  dataDoTexto,
+  dataHoraDoInstante,
+  duracaoEntre,
+  formatarData,
+  horaDoRegistro,
+} from "../lib/tempo";
 
 const PROCEDIMENTOS_COMPLEMENTARES = [
   "31602339 - Bloqueio anestésico de plexo",
@@ -260,6 +267,9 @@ export default function Home() {
   const [editingId, setEditingId] = useState(null);
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+  const mapaInputRef = useRef(null);
+  // O mapa lido, esperando conferência: { data, anestesista, linhas: [...] }.
+  const [mapa, setMapa] = useState(null);
 
   const loadEntries = useCallback(async () => {
     try {
@@ -405,6 +415,149 @@ export default function Home() {
     } catch (e) {
       console.error(e);
       alert("Não consegui remover o cadastro. Tente de novo.");
+    }
+  }
+
+  /**
+   * Lê o mapa cirúrgico: uma foto, vários pacientes.
+   *
+   * O que chega da leitura não vira registro direto — vira uma lista para
+   * conferir. Paciente que já está no app entra desmarcado, e é isso que evita
+   * lançar o mesmo mapa duas vezes sem perceber.
+   */
+  async function handleMapa(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setErrorMsg("");
+    setStatus("extracting");
+    try {
+      const base64 = await fileToResizedBase64(file);
+
+      const r = await fetch("/api/extract-mapa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64, mediaType: "image/jpeg" }),
+      });
+      const parsed = await r.json();
+      if (!r.ok) throw new Error(parsed.error || "Falha na leitura do mapa");
+
+      const data = dataDoTexto(parsed.data) || agoraLocal().data;
+      const linhas = (parsed.registros || []).map((p) => {
+        const paciente = (p.paciente || "").toUpperCase();
+        const procedimentos = (p.procedimentos || []).map((x) => (x || "").toUpperCase());
+        return {
+          ...p,
+          paciente,
+          procedimentos,
+          jaLancado: jaExiste(paciente, data, procedimentos),
+          incluido: !jaExiste(paciente, data, procedimentos),
+        };
+      });
+
+      if (linhas.length === 0) {
+        setErrorMsg("Não achei nenhum paciente nesse mapa. Confira se a foto pegou a tabela inteira.");
+        setStatus("idle");
+        return;
+      }
+
+      setMapa({ data, anestesista: "", linhas });
+      setStatus("mapa");
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Não consegui ler o mapa (" + (err.message || "erro") + ").");
+      setStatus("idle");
+    } finally {
+      if (mapaInputRef.current) mapaInputRef.current.value = "";
+    }
+  }
+
+  /** Este paciente, nesta data, com estes procedimentos, já está lançado? */
+  function jaExiste(paciente, data, procedimentos) {
+    const nome = normalizarTexto(paciente);
+    if (!nome) return false;
+    const chave = normalizarTexto((procedimentos || []).join(SEPARADOR_PROCEDIMENTOS));
+    return entries.some(
+      (e) =>
+        normalizarTexto(e.paciente) === nome &&
+        (e.dataCirurgia || "") === data &&
+        normalizarTexto((e.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS)) === chave
+    );
+  }
+
+  function atualizarLinha(indice, patch) {
+    setMapa((m) => ({
+      ...m,
+      linhas: m.linhas.map((l, i) => (i === indice ? { ...l, ...patch } : l)),
+    }));
+  }
+
+  /** Salva os pacientes marcados do mapa, todos de uma vez. */
+  async function salvarMapa() {
+    if (salvandoRef.current) return;
+
+    const marcadas = mapa.linhas.filter((l) => l.incluido);
+    if (marcadas.length === 0) {
+      setErrorMsg("Nenhum paciente marcado.");
+      return;
+    }
+    if (!(mapa.anestesista || "").trim()) {
+      setErrorMsg("Informe o anestesista que fez os procedimentos.");
+      return;
+    }
+
+    const anestesista = mapa.anestesista.toUpperCase();
+    const registros = marcadas.map((l) => ({
+      local: localAtivo,
+      dataCirurgia: mapa.data,
+      horaLancamento: l.hora || "",
+      paciente: l.paciente,
+      convenio: l.convenio || "",
+      nGuia: l.nGuia || "",
+      cirurgiao: l.cirurgiao || "",
+      procedimentos: l.procedimentos.filter(Boolean),
+      anestesista,
+      // Carimbo é campo do hospital; na clínica ele nem existe.
+      ...(localAtivo ? {} : { anestesistaCarimbo: temCarimbo(anestesista) ? anestesista : "" }),
+      executado: false,
+      urgencia: false,
+      procedimentoComplementar: [],
+      observacao: "",
+    }));
+
+    salvandoRef.current = true;
+    setSalvando(true);
+    try {
+      const r = await fetch("/api/entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ registros }),
+      });
+      if (!r.ok) {
+        setErrorMsg(`Não consegui salvar: ${await mensagemDeErro(r)}. A lista continua aqui.`);
+        return;
+      }
+      const resposta = await r.json();
+      await loadEntries();
+      // O mapa também ensina: sem isto, a clínica que só lança por mapa nunca
+      // teria os convênios dela no autocompletar.
+      await aprenderCadastros({ local: localAtivo });
+      for (const convenio of [...new Set(marcadas.map((l) => (l.convenio || "").trim()).filter(Boolean))]) {
+        await aprenderCadastros({ convenio });
+      }
+
+      const pulados = (resposta.duplicados || []).length;
+      alert(
+        `${resposta.gravados} lançamento(s) do mapa.` +
+          (pulados > 0 ? `\n${pulados} já estava(m) no app e foi(ram) pulado(s).` : "")
+      );
+      setMapa(null);
+      setStatus("idle");
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Não consegui salvar: o aparelho não falou com o servidor. A lista continua aqui.");
+    } finally {
+      salvandoRef.current = false;
+      setSalvando(false);
     }
   }
 
@@ -877,6 +1030,16 @@ export default function Home() {
             <button onClick={startManual} style={btnEmpilhado(btnSecondary)}>
               ✏️ Preencher manualmente
             </button>
+            {/* Uma foto, vários pacientes. Só faz sentido onde existe mapa do
+                dia, que é a clínica — daí aparecer com o local escolhido. */}
+            {localAtivo && (
+              <button
+                onClick={() => mapaInputRef.current && mapaInputRef.current.click()}
+                style={btnEmpilhado(btnSecondary)}
+              >
+                📋 Ler mapa cirúrgico
+              </button>
+            )}
           </div>
         )}
 
@@ -888,6 +1051,120 @@ export default function Home() {
 
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: "none" }} />
         <input ref={galleryInputRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+        <input ref={mapaInputRef} type="file" accept="image/*" onChange={handleMapa} style={{ display: "none" }} />
+
+        {status === "mapa" && mapa && (
+          <div style={{ border: `1px solid ${CORES.borda}`, borderRadius: 8, background: "white", overflow: "hidden" }}>
+            <div style={{ background: CORES.clara, padding: "12px 16px", borderBottom: `1px solid ${CORES.borda}`, fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, fontWeight: 600 }}>
+              Mapa de {localAtivo || HOSPITAL} — {mapa.linhas.length} paciente(s)
+            </div>
+
+            {errorMsg && (
+              <div style={{ padding: "12px 16px", fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.avisoTinta, background: CORES.avisoFundo, borderBottom: `1px solid ${CORES.borda}` }}>
+                {errorMsg}
+              </div>
+            )}
+
+            {/* Data e anestesista valem para o mapa inteiro: é um dia, um
+                plantão, e perguntar paciente a paciente seria repetir a mesma
+                resposta dez vezes. */}
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12, borderBottom: `1px solid ${CORES.bordaSuave}` }}>
+              <Field label="Data do mapa">
+                <input
+                  style={inputStyle}
+                  type="date"
+                  value={mapa.data || ""}
+                  onChange={(ev) => setMapa((m) => ({ ...m, data: ev.target.value }))}
+                />
+              </Field>
+              <Field label="Anestesista que fez os procedimentos *">
+                <AutocompleteInput
+                  value={mapa.anestesista || ""}
+                  onChange={(v) => setMapa((m) => ({ ...m, anestesista: v.toUpperCase() }))}
+                  options={cadastros.anestesistas || []}
+                  placeholder="Anestesista"
+                  invalid={!!errorMsg && !(mapa.anestesista || "").trim()}
+                />
+              </Field>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {mapa.linhas.map((l, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: "10px 16px",
+                    borderBottom: `1px solid ${CORES.bordaSuave}`,
+                    background: l.incluido ? "white" : CORES.fundo,
+                    opacity: l.incluido ? 1 : 0.6,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!l.incluido}
+                      onChange={(ev) => atualizarLinha(i, { incluido: ev.target.checked })}
+                      style={{ width: 18, height: 18, flexShrink: 0 }}
+                    />
+                    <input
+                      style={{ ...inputStyle, fontSize: 14 }}
+                      type="text"
+                      value={l.paciente}
+                      onChange={(ev) => atualizarLinha(i, { paciente: ev.target.value.toUpperCase() })}
+                    />
+                  </div>
+                  <div style={{ paddingLeft: 28, marginTop: 4 }}>
+                    <input
+                      style={{ ...inputStyle, fontSize: 13 }}
+                      type="text"
+                      value={(l.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS)}
+                      onChange={(ev) =>
+                        atualizarLinha(i, {
+                          procedimentos: ev.target.value
+                            .split(SEPARADOR_PROCEDIMENTOS)
+                            .map((x) => x.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      placeholder="Procedimento"
+                    />
+                    <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 11, color: CORES.suave, marginTop: 4 }}>
+                      {[l.hora, l.convenio, l.cirurgiao ? `Dr(a). ${l.cirurgiao}` : "", l.nGuia ? `Guia ${l.nGuia}` : ""]
+                        .filter(Boolean)
+                        .join(" · ")}
+                      {l.jaLancado && (
+                        <span style={{ color: CORES.alerta, fontWeight: 600 }}> · já lançado</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, padding: 16 }}>
+              <button
+                onClick={() => {
+                  setMapa(null);
+                  setErrorMsg("");
+                  setStatus("idle");
+                }}
+                disabled={salvando}
+                style={{ ...btnSecondary, flex: 1, opacity: salvando ? 0.5 : 1 }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={salvarMapa}
+                disabled={salvando}
+                style={{ ...btnPrimary, flex: 2, opacity: salvando ? 0.6 : 1 }}
+              >
+                {salvando
+                  ? "Salvando…"
+                  : `✓ Adicionar ${mapa.linhas.filter((l) => l.incluido).length} registro(s)`}
+              </button>
+            </div>
+          </div>
+        )}
 
         {status === "review" && (
           <div style={{ border: `1px solid ${CORES.borda}`, borderRadius: 8, background: "white", overflow: "hidden" }}>
