@@ -2,13 +2,16 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
+import { localDoModelo, modeloDoRegistro, modelosPresentes } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import {
   CAMPOS_DO_REGISTRO,
   CAMPOS_MANUAIS,
   CAMPOS_QUE_APRENDEM,
   COLUNAS,
+  COLUNAS_CLINICA,
   COLUNAS_PARTICULAR,
+  ehDeClinica,
   ehParticular,
   ehUnimed,
   SEPARADOR_PROCEDIMENTOS,
@@ -675,15 +678,25 @@ export default function Home() {
   /**
    * Baixa um arquivo por ano, com um mês por aba.
    *
-   * Sai um arquivo para os convênios e outro para as particulares, do mesmo
-   * jeito que as planilhas do Google: são duas conferências diferentes, e as
-   * colunas nem são as mesmas.
+   * Um arquivo por planilha do Google: convênio, particular e um por clínica.
+   * São conferências diferentes, feitas com gente diferente, e as colunas nem
+   * são as mesmas.
    */
   function exportExcel() {
     if (entries.length === 0) return;
 
-    baixarAno(entries.filter((e) => !ehParticular(e)), COLUNAS, PREFIXO_ARQUIVO);
-    baixarAno(entries.filter(ehParticular), COLUNAS_PARTICULAR, `${PREFIXO_ARQUIVO}-particular`);
+    const doModelo = (modelo) => entries.filter((e) => modeloDoRegistro(e) === modelo);
+
+    baixarAno(doModelo("convenio"), COLUNAS, PREFIXO_ARQUIVO);
+    baixarAno(doModelo("particular"), COLUNAS_PARTICULAR, `${PREFIXO_ARQUIVO}-particular`);
+
+    modelosPresentes(entries)
+      .filter(localDoModelo)
+      .forEach((modelo) => {
+        const local = localDoModelo(modelo);
+        const apelido = normalizarTexto(local).replace(/\s+/g, "-");
+        baixarAno(doModelo(modelo), COLUNAS_CLINICA, `${PREFIXO_ARQUIVO}-${apelido}`);
+      });
   }
 
   function baixarAno(registros, colunas, prefixo) {
@@ -862,6 +875,9 @@ export default function Home() {
                 // que já tiver sido digitado fica guardado no registro caso o
                 // convênio volte a ser particular.
                 if (f.soParticular && !ehParticular(draft)) return null;
+                // Carteira, atendimento e carimbo são do hospital; na clínica
+                // seriam três perguntas sem resposta em todo lançamento.
+                if (f.soHospital && ehDeClinica(draft)) return null;
 
                 if (f.hora) {
                   // A duração aparece embaixo do término e recalcula a cada
@@ -894,7 +910,7 @@ export default function Home() {
                 // para o lançamento de amanhã.
                 if (f.cadastroKey) {
                   return (
-                    <Field key={f.key} label={f.label}>
+                    <Field key={f.key} label={f.appLabel || f.label}>
                       <AutocompleteInput
                         value={draft[f.key] || ""}
                         onChange={(v) => updateDraft(f.key, f.maiusculo ? v.toUpperCase() : v)}
@@ -906,7 +922,7 @@ export default function Home() {
                 }
 
                 const campo = (
-                  <Field key={f.key} label={f.label}>
+                  <Field key={f.key} label={f.appLabel || f.label}>
                     <input
                       style={inputStyle}
                       type="text"
@@ -951,6 +967,9 @@ export default function Home() {
                           />
                         </Field>
                       </div>
+                      {/* Urgência é do hospital: a clínica opera agendado, e a
+                          planilha dela nem tem essa coluna. */}
+                      {!ehDeClinica(draft) && (
                       <label
                         style={{
                           display: "flex",
@@ -977,6 +996,7 @@ export default function Home() {
                         />
                         Urgência
                       </label>
+                      )}
                     </div>
 
                     {avisoDaGuia && avisoDaGuia.mensagem && (
@@ -1043,6 +1063,7 @@ export default function Home() {
               <div style={{ height: 1, background: CORES.bordaSuave, margin: "4px 0" }} />
 
               {CAMPOS_MANUAIS.map((f) => {
+                if (f.soHospital && ehDeClinica(draft)) return null;
                 const rotulo = f.appLabel || f.label;
                 return (
                   <Field key={f.key} label={f.required ? `${rotulo} *` : rotulo}>
@@ -1350,9 +1371,17 @@ export default function Home() {
               onImportar={(nomes) => importarCadastros("anestesistas", nomes)}
               onRemove={(nome) => removeCadastro("anestesistas", nome)}
             />
-            {/* Esta lista se enche sozinha, a cada registro salvo. Ela está
-                aqui para o caso contrário: apagar um convênio que entrou
+            {/* Estas duas listas se enchem sozinhas, a cada registro salvo.
+                Estão aqui para o caso contrário: apagar um nome que entrou
                 escrito errado. */}
+            <CadastroSection
+              title="Locais"
+              placeholder="Nome da clínica"
+              items={cadastros.locais}
+              onAdd={(nome) => addCadastro("locais", nome)}
+              onImportar={(nomes) => importarCadastros("locais", nomes)}
+              onRemove={(nome) => removeCadastro("locais", nome)}
+            />
             <CadastroSection
               title="Convênios"
               placeholder="Nome do convênio"
@@ -1381,14 +1410,18 @@ export default function Home() {
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <ViewField label="Data do lançamento" value={formatarData(viewingEntry.dataCirurgia)} />
               <ViewField label="Hora do lançamento" value={horaDoRegistro(viewingEntry)} />
-              {CAMPOS_DO_REGISTRO.filter((f) => !f.soParticular || ehParticular(viewingEntry)).map((f) => (
+              {CAMPOS_DO_REGISTRO.filter(
+                (f) =>
+                  (!f.soParticular || ehParticular(viewingEntry)) &&
+                  (!f.soHospital || !ehDeClinica(viewingEntry))
+              ).map((f) => (
                 <ViewField key={f.key} label={f.label} value={viewingEntry[f.key]} />
               ))}
               {ehParticular(viewingEntry) && (
                 <ViewField label="Horas" value={duracaoEntre(viewingEntry.inicio, viewingEntry.termino)} />
               )}
               <ViewField label="Procedimentos" value={(viewingEntry.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS)} />
-              {CAMPOS_MANUAIS.map((f) => (
+              {CAMPOS_MANUAIS.filter((f) => !f.soHospital || !ehDeClinica(viewingEntry)).map((f) => (
                 <ViewField key={f.key} label={f.appLabel || f.label} value={viewingEntry[f.key]} />
               ))}
               <ViewField label="Urgência" value={viewingEntry.urgencia ? "Sim" : "Não"} />
@@ -1432,7 +1465,8 @@ function LinhaDeIdentificacao({ entry }) {
   ].filter(Boolean);
 
   const convenio = (entry.convenio || "").trim();
-  if (numeros.length === 0 && !convenio) return null;
+  const local = (entry.local || "").trim();
+  if (numeros.length === 0 && !convenio && !local) return null;
 
   const cor = corDoConvenio(convenio);
 
@@ -1442,6 +1476,9 @@ function LinhaDeIdentificacao({ entry }) {
       {numeros.length > 0 && convenio ? " · " : ""}
       {/* Só o nome do convênio muda de cor; os números continuam discretos. */}
       {convenio && <span style={{ color: cor || "inherit", fontWeight: cor ? 600 : 400 }}>{convenio}</span>}
+      {/* O local só aparece quando existe: hospital é o caso comum, e repeti-lo
+          em toda linha seria ruído. */}
+      {local && ((numeros.length > 0 || convenio ? " · " : "") + local)}
     </div>
   );
 }

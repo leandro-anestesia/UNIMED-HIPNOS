@@ -1,6 +1,7 @@
 import { kv } from "../../lib/kv";
 import { sheetsEnabled, syncTudo, pullDaPlanilha } from "../../lib/sheets";
 import { normalizarRegistro, mudouNaNormalizacao } from "../../lib/registro";
+import { rotuloDaFalha } from "../../lib/modelos";
 
 const KEY = "guias:entries";
 
@@ -56,11 +57,11 @@ export default async function handler(req, res) {
       importadosDaPlanilha: mudancas,
       recusadas,
       guiasCompletadas,
-      // Um ano pode ter duas planilhas: a de convênio e a das particulares.
+      // Um ano pode ter várias planilhas: convênio, particular e uma por clínica.
       planilhas: Object.fromEntries(
         Object.entries(sincronizados).flatMap(([ano, porModelo]) =>
           Object.entries(porModelo).map(([modelo, id]) => [
-            modelo === "particular" ? `${ano} (particular)` : ano,
+            rotuloDaFalha(ano, modelo),
             `https://docs.google.com/spreadsheets/d/${id}`,
           ])
         )
