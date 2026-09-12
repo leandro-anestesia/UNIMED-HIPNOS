@@ -77,8 +77,11 @@ const TODOS_OS_LOCAIS = "todos";
 /** Onde o aparelho guarda o local escolhido na tela inicial. */
 const LOCAL_GUARDADO = "guias:local";
 
-/** Como o hospital aparece onde é preciso nomeá-lo: no app ele é o local vazio. */
-const HOSPITAL = "Hospital";
+/**
+ * Como o hospital aparece onde é preciso nomeá-lo: no app ele é o local vazio.
+ * Em caixa alta como os nomes das clínicas, que vêm do cadastro assim.
+ */
+const HOSPITAL = "HOSPITAL";
 
 /** Chave "AAAA-MM" do lançamento, usada para agrupar por mês. */
 function chaveDoMes(entry) {
