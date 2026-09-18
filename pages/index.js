@@ -578,8 +578,12 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64: base64, mediaType: "image/jpeg" }),
       });
-      const parsed = await r.json();
-      if (!r.ok) throw new Error(parsed.error || "Falha na extração");
+      const respostaDaLeitura = await r.json();
+      if (!r.ok) throw new Error(respostaDaLeitura.error || "Falha na extração");
+
+      // `data` não é campo do registro: é a data lida do documento, que entra
+      // como data do lançamento. Fica fora do que se espalha no rascunho.
+      const { data: dataLida, ...parsed } = respostaDaLeitura;
 
       // A guia às vezes chega sem o último dígito: completa já aqui, que é o
       // momento do "lançar a guia", e mostra o que aconteceu. Só na Unimed: o
@@ -600,6 +604,9 @@ export default function Home() {
         ...parsed,
         ...emCaixa,
         local: localAtivo,
+        // A etiqueta traz a data do atendimento, e ela vale mais que a de hoje:
+        // a etiqueta pode ser lida no dia seguinte, e o mês da planilha mudaria.
+        ...(dataDoTexto(dataLida) ? { dataCirurgia: dataDoTexto(dataLida) } : {}),
         nGuia: guia.numero,
         procedimentos: paraLinhas(parsed.procedimentos),
       });
