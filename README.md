@@ -127,11 +127,14 @@ Estão comentados no código, mas vale a lista:
 - **Travas no Redis em dois lugares**: no ciclo ler-modificar-gravar (senão uma
   gravação simultânea some com um paciente) e no espelhamento em segundo plano
   (senão uma tarefa antiga termina por último e grava estado velho).
-- **A caixa de seleção de "Executado" precisa de faixa de linhas limitada.**
-  Aplicada à coluna inteira, o Google materializa "Não" em ~1000 linhas e a
+- **O que se escolhe em "Executado" precisa de faixa de linhas limitada.**
+  Aplicado à coluna inteira, o Google materializa o valor em ~1000 linhas e a
   planilha parece cheia de registros vazios.
-- **"Executado" usa `BOOLEAN` com os valores "Sim"/"Não"**, e não menu suspenso:
-  a API do Sheets não expõe o estilo do menu.
+- **"Executado" tem três estados na planilha da Unimed** — Sim (verde), Não
+  (vermelho) e Incompleto (amarelo), em menu suspenso (`ONE_OF_LIST`). Nas
+  demais planilhas continua a caixa de seleção `BOOLEAN` com "Sim"/"Não", e sem
+  `strict`: um registro incompleto pode mudar de convênio e cair ali, e a célula
+  precisa poder dizer a verdade sem virar erro. Ver `lib/executado.js`.
 - **A data do lançamento não sai de `toISOString()`.** Ele devolve UTC, e das 21h
   em diante o Brasil já está no dia seguinte — o plantão da noite nasceria no mês
   errado. Ver `lib/tempo.js`.

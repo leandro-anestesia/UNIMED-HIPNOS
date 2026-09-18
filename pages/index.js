@@ -2,6 +2,14 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
+import {
+  ESTADOS_DE_EXECUCAO,
+  EXECUCAO_PADRAO,
+  estadoDeExecucao,
+  foiExecutada,
+  rotuloDaExecucao,
+  temTresEstados,
+} from "../lib/executado";
 import { localDoModelo, modeloDoRegistro, modelosPresentes } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import {
@@ -182,7 +190,7 @@ function emptyDraft() {
   d.procedimentos = [];
   d.procedimentoComplementar = [];
   d.observacao = "";
-  d.executado = false;
+  d.executado = EXECUCAO_PADRAO;
   d.urgencia = false;
   return d;
 }
@@ -521,7 +529,7 @@ export default function Home() {
       anestesista,
       // Carimbo é campo do hospital; na clínica ele nem existe.
       ...(localAtivo ? {} : { anestesistaCarimbo: temCarimbo(anestesista) ? anestesista : "" }),
-      executado: false,
+      executado: EXECUCAO_PADRAO,
       urgencia: false,
       procedimentoComplementar: [],
       observacao: "",
@@ -791,6 +799,33 @@ export default function Home() {
     setStatus("review");
   }
 
+  /**
+   * Abre um registro novo com os dados deste.
+   *
+   * Serve ao caso comum de dois lançamentos quase iguais — o mesmo paciente com
+   * um segundo procedimento, ou a mesma dupla de cirurgião e anestesista no
+   * paciente seguinte. Redigitar tudo é onde nasce a divergência de grafia entre
+   * duas linhas que deveriam combinar.
+   *
+   * Vem sem `id` e com `editingId` nulo, senão salvar sobrescreveria o original
+   * em vez de criar o segundo. A hora do lançamento é a de agora: o registro
+   * está nascendo neste momento, e a data da cirurgia é que se repete.
+   */
+  function duplicarEntry(entry) {
+    const { id, criadoEm, ...dados } = entry;
+    setDraft({
+      ...emptyDraft(),
+      ...dados,
+      horaLancamento: agoraLocal().hora,
+      procedimentos: paraLinhas(entry.procedimentos),
+    });
+    setEditingId(null);
+    setImagePreview(null);
+    const g = ehUnimed(entry) ? analisarGuia(entry.nGuia) : { estado: "vazia" };
+    setGuiaInfo(g.estado === "vazia" ? null : g);
+    setStatus("review");
+  }
+
   async function deleteEntry(id) {
     try {
       const r = await fetch(`/api/entries?id=${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -882,7 +917,7 @@ export default function Home() {
 
   const resumo = {
     total: registrosVisiveis.length,
-    executados: registrosVisiveis.filter((e) => e.executado === true).length,
+    executados: registrosVisiveis.filter((e) => foiExecutada(e.executado)).length,
     urgencias: registrosVisiveis.filter((e) => e.urgencia === true).length,
   };
 
@@ -923,7 +958,7 @@ export default function Home() {
       "Observação",
     ];
     const toRow = (e) => [
-      e.executado === true ? "Sim" : "Não",
+      rotuloDaExecucao(e.executado),
       formatarData(e.dataCirurgia),
       horaDoRegistro(e),
       ...colunas.map((c) => valorDaColuna(e, c)),
@@ -1459,22 +1494,12 @@ export default function Home() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>Executado</span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => updateDraft("executado", true)}
-                    style={{ ...(draft.executado === true ? execBtnYesActive : execBtn), flex: 1, padding: "10px 12px", fontSize: 14 }}
-                  >
-                    Sim
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateDraft("executado", false)}
-                    style={{ ...(draft.executado !== true ? execBtnNoActive : execBtn), flex: 1, padding: "10px 12px", fontSize: 14 }}
-                  >
-                    Não
-                  </button>
-                </div>
+                <EstadoDaExecucao
+                  entry={draft}
+                  valor={draft.executado}
+                  onEscolher={(estado) => updateDraft("executado", estado)}
+                  grande
+                />
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1723,8 +1748,16 @@ export default function Home() {
                         procura percorrendo a lista, e abrir cartão por cartão
                         para vê-lo desfaria a serventia de fechar. */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      {e.executado === true && (
+                      {estadoDeExecucao(e.executado) === "sim" && (
                         <span style={{ color: CORES.principal, fontSize: 14, fontWeight: 700 }}>✓</span>
+                      )}
+                      {/* O incompleto precisa de marca própria: sem ela, de fora
+                          ele se confunde com o que não foi feito, que é o
+                          contrário do motivo de o estado existir. */}
+                      {estadoDeExecucao(e.executado) === "incompleto" && (
+                        <span style={{ color: CORES.avisoTinta, fontSize: 11, fontWeight: 700 }}>
+                          INCOMPLETO
+                        </span>
                       )}
                       <span style={{ color: CORES.tenue, fontSize: 11 }}>{aberto ? "▲" : "▼"}</span>
                     </div>
@@ -1758,14 +1791,11 @@ export default function Home() {
                         <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, flex: 1, paddingRight: 8 }}>
                           {(e.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS) || "(sem procedimento)"}
                         </div>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button onClick={() => updateExecutado(e, true)} style={e.executado === true ? execBtnYesActive : execBtn}>
-                            Sim
-                          </button>
-                          <button onClick={() => updateExecutado(e, false)} style={e.executado !== true ? execBtnNoActive : execBtn}>
-                            Não
-                          </button>
-                        </div>
+                        <EstadoDaExecucao
+                          entry={e}
+                          valor={e.executado}
+                          onEscolher={(estado) => updateExecutado(e, estado)}
+                        />
                       </div>
                     </>
                   )}
@@ -1854,13 +1884,23 @@ export default function Home() {
                 <ViewField key={f.key} label={f.appLabel || f.label} value={viewingEntry[f.key]} />
               ))}
               <ViewField label="Urgência" value={viewingEntry.urgencia ? "Sim" : "Não"} />
-              <ViewField label="Executado" value={viewingEntry.executado === true ? "Sim" : "Não"} />
+              <ViewField label="Executado" value={rotuloDaExecucao(viewingEntry.executado)} />
               <ViewField label="Procedimento complementar" value={(viewingEntry.procedimentoComplementar || []).join(", ")} />
               <ViewField label="Observação" value={viewingEntry.observacao} />
               <ViewField label="Criado em" value={dataHoraDoInstante(viewingEntry.criadoEm)} />
             </div>
             <div style={{ display: "flex", gap: 8, padding: "0 16px 16px" }}>
               <button onClick={() => setViewingEntry(null)} style={{ ...btnSecondary, flex: 1 }}>Fechar</button>
+              <button
+                onClick={() => {
+                  const entry = viewingEntry;
+                  setViewingEntry(null);
+                  duplicarEntry(entry);
+                }}
+                style={{ ...btnSecondary, flex: 1 }}
+              >
+                ⧉ Duplicar
+              </button>
               <button
                 onClick={() => {
                   const entry = viewingEntry;
@@ -1908,6 +1948,45 @@ function LinhaDeIdentificacao({ entry }) {
       {/* O local só aparece quando existe: hospital é o caso comum, e repeti-lo
           em toda linha seria ruído. */}
       {local && ((numeros.length > 0 || convenio ? " · " : "") + local)}
+    </div>
+  );
+}
+
+/**
+ * Os botões de estado da conferência.
+ *
+ * Três na Unimed — Sim, Não e Incompleto —, dois nas demais. O terceiro também
+ * aparece num registro que já esteja marcado como incompleto e mudou de
+ * convênio: escondê-lo deixaria o estado na tela sem como ser desfeito.
+ */
+function EstadoDaExecucao({ entry, valor, onEscolher, grande }) {
+  const atual = estadoDeExecucao(valor);
+  const opcoes = ESTADOS_DE_EXECUCAO.filter(
+    (e) => e.valor !== "incompleto" || temTresEstados(modeloDoRegistro(entry)) || atual === "incompleto"
+  );
+
+  return (
+    <div style={{ display: "flex", gap: grande ? 8 : 6, flexShrink: 0 }}>
+      {opcoes.map((estado) => (
+        <button
+          key={estado.valor}
+          type="button"
+          onClick={() => onEscolher(estado.valor)}
+          style={{
+            ...execBtn,
+            ...(atual === estado.valor
+              ? {
+                  background: estado.fundoNaTela,
+                  color: estado.tintaNaTela,
+                  border: `1px solid ${estado.fundoNaTela}`,
+                }
+              : null),
+            ...(grande ? { flex: 1, padding: "10px 12px", fontSize: 14 } : null),
+          }}
+        >
+          {estado.rotulo}
+        </button>
+      ))}
     </div>
   );
 }
@@ -2447,16 +2526,3 @@ const execBtn = {
   cursor: "pointer",
 };
 
-const execBtnYesActive = {
-  ...execBtn,
-  background: CORES.principal,
-  color: CORES.sobrePrincipal,
-  border: `1px solid ${CORES.principal}`,
-};
-
-const execBtnNoActive = {
-  ...execBtn,
-  background: CORES.alerta,
-  color: "white",
-  border: `1px solid ${CORES.alerta}`,
-};
