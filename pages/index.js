@@ -916,17 +916,17 @@ export default function Home() {
     if (registros.length === 0) return;
 
     const headers = [
+      "Executado",
       "Data",
       "Hora do lançamento",
       ...colunas.map((c) => c.label),
-      "Executado",
       "Observação",
     ];
     const toRow = (e) => [
+      e.executado === true ? "Sim" : "Não",
       formatarData(e.dataCirurgia),
       horaDoRegistro(e),
       ...colunas.map((c) => valorDaColuna(e, c)),
-      e.executado === true ? "Sim" : "Não",
       e.observacao || "",
     ];
 
