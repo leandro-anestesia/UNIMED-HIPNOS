@@ -1,4 +1,4 @@
-import { normalizarTexto } from "../../lib/texto";
+import { normalizarTexto, semTratamento } from "../../lib/texto";
 
 export const config = {
   api: {
@@ -58,15 +58,6 @@ Outras regras:
 - Idade, identidade, telefone e prontuário NÃO são usados: não devolva nenhum deles.
 - Campo que não estiver visível ou legível fica como string vazia "" (ou lista vazia).
 - Não invente paciente, nem procedimento, nem número. Transcreva o que está escrito.`;
-
-/** Tira o "DR"/"DRA" que o mapa escreve antes do nome de quem opera. */
-function semTratamento(nome) {
-  return (nome || "")
-    .toString()
-    .trim()
-    .replace(/^(dr|dra|dr\.|dra\.)\s+/i, "")
-    .trim();
-}
 
 /**
  * A linha é de paciente mesmo?

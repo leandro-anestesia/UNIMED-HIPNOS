@@ -1,4 +1,4 @@
-import { normalizarTexto } from "../../lib/texto";
+import { normalizarTexto, semTratamento } from "../../lib/texto";
 
 export const config = {
   api: {
@@ -20,10 +20,16 @@ export const config = {
  * carteira começa com zeros que não podem cair, e a tabela de procedimentos é
  * seguida por uma de "Gabaritos" que não é procedimento nenhum.
  */
-const PROMPT = `Esta é a foto de uma guia de convênio médico brasileira no padrão TISS — em geral a "Guia de Solicitação de Internação" da Unimed, com os campos numerados. Leia a guia e extraia os campos abaixo.
+const PROMPT = `Esta foto é de UM de dois documentos. Reconheça qual antes de ler:
+
+(A) uma GUIA de convênio no padrão TISS — em geral a "Guia de Solicitação de Internação" da Unimed, folha grande com os campos numerados; ou
+(B) uma ETIQUETA de paciente impressa pela clínica — um retângulo pequeno, com o nome da clínica no alto e poucas linhas rotuladas ("CLIENTE:", "DATA NASC:", "DATA ATENDIMENTO:", "CONVÊNIO:", "CIRURGIÃO:"), e o procedimento solto embaixo.
+
+Os dois preenchem os mesmos campos; a etiqueta simplesmente tem menos deles. Devolva vazio o que o documento não trouxer, e não invente para completar.
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
+  "data": "",
   "atendimento": "",
   "paciente": "",
   "convenio": "",
@@ -58,6 +64,19 @@ Como preencher cada campo:
   IGNORE também a linha cuja descrição é INTERNAÇÃO (por exemplo "99996666 - INTERNACAO"): é a internação hospitalar em si, não um ato anestésico, e não entra na lista.
   IGNORE POR COMPLETO a seção "Gabaritos Solicitados", que vem logo abaixo e tem aparência de tabela igual: gabarito é pacote de cobrança, não é procedimento, e não pode entrar na lista.
   Se a linha tiver descrição mas o código estiver ilegível, devolva só a descrição.
+
+SE FOR ETIQUETA (B), onde cada coisa está:
+
+- "paciente": o que vem depois de "CLIENTE:".
+- "data": o que vem depois de "DATA ATENDIMENTO:", no formato dd/mm/aaaa. É a data da cirurgia.
+  CUIDADO: ao lado dela está "DATA NASC:", a data de nascimento. Não use essa, e não devolva a data de nascimento em campo nenhum.
+- "convenio": o que vem depois de "CONVÊNIO:".
+- "cirurgiao": o que vem depois de "CIRURGIÃO:". Devolva o nome SEM o "DR"/"DRA" da frente.
+- "procedimentos": o texto solto embaixo dos rótulos, sem código TUSS — por exemplo "CIRURGIA DE CATARATA" numa linha e "OLHO ESQUERDO" na seguinte. É UM procedimento só: junte as duas linhas numa entrada, porque a lateralidade faz parte dele. Nunca devolva a lateralidade como procedimento separado.
+- "nGuia", "nCarteira" e "atendimento": a etiqueta normalmente não traz nenhum dos três. Deixe vazios.
+- O nome da clínica no alto da etiqueta NÃO é o convênio.
+
+Na guia (A), "data" só é preenchida se a folha trouxer claramente a data da cirurgia ou do atendimento; na dúvida, deixe vazia.
 
 Regras gerais:
 - Campo que não estiver visível ou legível fica como string vazia "" (ou lista vazia, em "procedimentos").
@@ -190,12 +209,13 @@ export default async function handler(req, res) {
       : [];
 
     return res.status(200).json({
+      data: (parsed.data || "").toString().trim(),
       atendimento: (parsed.atendimento || "").toString().trim(),
       paciente: parsed.paciente || "",
       convenio: nomeDoConvenio(parsed.convenio),
       nGuia: parsed.nGuia || "",
       nCarteira: parsed.nCarteira || "",
-      cirurgiao: parsed.cirurgiao || "",
+      cirurgiao: semTratamento(parsed.cirurgiao),
       procedimentos: procedimentos
         .map((p) => (p || "").toString().trim())
         .filter(Boolean)
