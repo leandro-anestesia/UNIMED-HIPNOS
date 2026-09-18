@@ -889,7 +889,8 @@ export default function Home() {
   /**
    * Baixa um arquivo por ano, com um mês por aba.
    *
-   * Um arquivo por planilha do Google: convênio, particular e um por clínica.
+   * Um arquivo por planilha do Google: Unimed, outros convênios, particular e
+   * um por clínica.
    * São conferências diferentes, feitas com gente diferente, e as colunas nem
    * são as mesmas.
    */
@@ -899,6 +900,7 @@ export default function Home() {
     const doModelo = (modelo) => entries.filter((e) => modeloDoRegistro(e) === modelo);
 
     baixarAno(doModelo("convenio"), COLUNAS, PREFIXO_ARQUIVO);
+    baixarAno(doModelo("outros"), COLUNAS, `${PREFIXO_ARQUIVO}-outros-convenios`);
     baixarAno(doModelo("particular"), COLUNAS_PARTICULAR, `${PREFIXO_ARQUIVO}-particular`);
 
     modelosPresentes(entries)
@@ -918,7 +920,6 @@ export default function Home() {
       "Hora do lançamento",
       ...colunas.map((c) => c.label),
       "Executado",
-      "Procedimento complementar",
       "Observação",
     ];
     const toRow = (e) => [
@@ -926,7 +927,6 @@ export default function Home() {
       horaDoRegistro(e),
       ...colunas.map((c) => valorDaColuna(e, c)),
       e.executado === true ? "Sim" : "Não",
-      (e.procedimentoComplementar || []).join(", "),
       e.observacao || "",
     ];
 
