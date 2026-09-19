@@ -10,6 +10,7 @@ import {
   rotuloDaExecucao,
   temTresEstados,
 } from "../lib/executado";
+import { HOSPITAL, LOCAIS_PADRAO, temPlanilhaPropria } from "../lib/locais";
 import { localDoModelo, modeloDoRegistro, modelosPresentes } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import {
@@ -17,6 +18,7 @@ import {
   CAMPOS_MANUAIS,
   CAMPOS_QUE_APRENDEM,
   COLUNAS,
+  COLUNAS_UNIMED,
   COLUNAS_CLINICA,
   COLUNAS_PARTICULAR,
   ehDeClinica,
@@ -90,7 +92,6 @@ const LOCAL_GUARDADO = "guias:local";
  * Como o hospital aparece onde é preciso nomeá-lo: no app ele é o local vazio.
  * Em caixa alta como os nomes das clínicas, que vêm do cadastro assim.
  */
-const HOSPITAL = "HOSPITAL";
 
 /** Chave "AAAA-MM" do lançamento, usada para agrupar por mês. */
 function chaveDoMes(entry) {
@@ -921,6 +922,13 @@ export default function Home() {
   // clínica onde nunca se lançou nada.
   const locaisComRegistro = [...new Set(entries.map((e) => (e.local || "").trim()).filter(Boolean))].sort();
 
+  // Os locais oferecidos na tela inicial: os que vêm de fábrica mais os que o
+  // cadastro aprendeu. Juntos e sem repetir — um local cadastrado à mão com a
+  // mesma grafia de um padrão apareceria duas vezes na lista.
+  const locaisParaEscolher = [
+    ...new Set([...LOCAIS_PADRAO, ...(cadastros.locais || [])].map((l) => l.trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+
   // Os convênios que aparecem nos registros — inclusive "PARTICULAR", que é
   // convênio nenhum mas se escolhe do mesmo jeito. Sai dos registros, e não do
   // cadastro: o cadastro tem os que já foram digitados alguma vez, e oferecer
@@ -955,7 +963,7 @@ export default function Home() {
 
     const doModelo = (modelo) => entries.filter((e) => modeloDoRegistro(e) === modelo);
 
-    baixarAno(doModelo("convenio"), COLUNAS, PREFIXO_ARQUIVO);
+    baixarAno(doModelo("convenio"), COLUNAS_UNIMED, PREFIXO_ARQUIVO);
     baixarAno(doModelo("outros"), COLUNAS, `${PREFIXO_ARQUIVO}-outros-convenios`);
     baixarAno(doModelo("particular"), COLUNAS_PARTICULAR, `${PREFIXO_ARQUIVO}-particular`);
 
@@ -1080,7 +1088,7 @@ export default function Home() {
                 viravam três linhas de retângulos arredondados, indistinguíveis
                 dos botões logo abaixo. Aqui ocupa uma linha, mostra o escolhido
                 sem abrir nada, e cabe qualquer número de clínicas. */}
-            {(cadastros.locais || []).length > 0 && (
+            {locaisParaEscolher.length > 0 && (
               <Field label="Local">
                 <select
                   value={localAtivo}
@@ -1094,7 +1102,7 @@ export default function Home() {
                   }}
                 >
                   <option value="">{HOSPITAL}</option>
-                  {(cadastros.locais || []).map((local) => (
+                  {locaisParaEscolher.map((local) => (
                     <option key={local} value={local}>
                       {local}
                     </option>
@@ -1107,7 +1115,11 @@ export default function Home() {
                 peso, a tela vira uma lista de retângulos e nenhum é o caminho
                 óbvio. Na clínica, o caminho óbvio é o mapa; no hospital, a
                 guia. */}
-            {localAtivo ? (
+            {/* O mapa só é o caminho óbvio na clínica que tem planilha
+                própria: é lá que a folha do dia traz todos os pacientes. No
+                Vision, no Dimen e nos demais se fotografa guia, como no
+                hospital — e o mapa continua logo abaixo, para quem tiver um. */}
+            {temPlanilhaPropria(localAtivo) ? (
               <button
                 onClick={() => mapaInputRef.current && mapaInputRef.current.click()}
                 style={btnEmpilhado(btnPrimary)}
@@ -1124,12 +1136,19 @@ export default function Home() {
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {localAtivo && (
+              {temPlanilhaPropria(localAtivo) ? (
                 <button
                   onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
                   style={btnEmpilhado(btnDiscreto)}
                 >
                   📷 Fotografar etiqueta ou guia
+                </button>
+              ) : (
+                <button
+                  onClick={() => mapaInputRef.current && mapaInputRef.current.click()}
+                  style={btnEmpilhado(btnDiscreto)}
+                >
+                  📋 Ler mapa cirúrgico
                 </button>
               )}
               <button
