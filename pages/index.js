@@ -81,6 +81,7 @@ const TODOS_OS_MESES = "todos";
 
 /** O filtro de local da lista, quando nenhum está escolhido. */
 const TODOS_OS_LOCAIS = "todos";
+const TODOS_OS_CONVENIOS = "todos";
 
 /** Onde o aparelho guarda o local escolhido na tela inicial. */
 const LOCAL_GUARDADO = "guias:local";
@@ -192,6 +193,7 @@ function emptyDraft() {
   d.observacao = "";
   d.executado = EXECUCAO_PADRAO;
   d.urgencia = false;
+  d.conferido = false;
   return d;
 }
 
@@ -269,6 +271,7 @@ export default function Home() {
   // percorrer, e vários abertos a transformariam de novo num paredão.
   const [expandido, setExpandido] = useState(null);
   const [localFiltro, setLocalFiltro] = useState(TODOS_OS_LOCAIS);
+  const [convenioFiltro, setConvenioFiltro] = useState(TODOS_OS_CONVENIOS);
   const [errorMsg, setErrorMsg] = useState("");
   // Lista vazia e lista que não carregou são idênticas na tela, e a segunda
   // faria o anestesista concluir que o lançamento dele sumiu.
@@ -550,10 +553,10 @@ export default function Home() {
       const resposta = await r.json();
       await loadEntries();
       // O mapa também ensina: sem isto, a clínica que só lança por mapa nunca
-      // teria os convênios dela no autocompletar.
+      // teria os convênios e os cirurgiões dela no autocompletar.
       await aprenderCadastros({ local: localAtivo });
-      for (const convenio of [...new Set(marcadas.map((l) => (l.convenio || "").trim()).filter(Boolean))]) {
-        await aprenderCadastros({ convenio });
+      for (const linha of marcadas) {
+        await aprenderCadastros({ convenio: linha.convenio, cirurgiao: linha.cirurgiao });
       }
 
       const pulados = (resposta.duplicados || []).length;
@@ -812,7 +815,9 @@ export default function Home() {
    * está nascendo neste momento, e a data da cirurgia é que se repete.
    */
   function duplicarEntry(entry) {
-    const { id, criadoEm, ...dados } = entry;
+    // `conferido` fica de fora: a cópia é um lançamento novo, e ninguém
+    // conferiu ainda.
+    const { id, criadoEm, conferido, ...dados } = entry;
     setDraft({
       ...emptyDraft(),
       ...dados,
@@ -837,11 +842,15 @@ export default function Home() {
     await loadEntries();
   }
 
-  async function updateExecutado(entry, value) {
-    const updated = { ...entry, executado: value };
-    // A tela muda na hora, para o toque parecer instantâneo; se a gravação
-    // falhar, o passo abaixo desfaz. Verde aceso sem ter gravado é pior do
-    // que não ter mudado nada.
+  /**
+   * Grava um campo só, direto da lista, sem abrir o registro.
+   *
+   * A tela muda na hora, para o toque parecer instantâneo; se a gravação
+   * falhar, o estado anterior volta. Verde aceso sem ter gravado é pior do que
+   * não ter mudado nada.
+   */
+  async function updateCampo(entry, campo, value, oQueE) {
+    const updated = { ...entry, [campo]: value };
     setEntries((prev) => prev.map((x) => (x.id === entry.id ? updated : x)));
     try {
       const r = await fetch("/api/entries", {
@@ -853,9 +862,12 @@ export default function Home() {
     } catch (e) {
       console.error(e);
       setEntries((prev) => prev.map((x) => (x.id === entry.id ? entry : x)));
-      alert("Não consegui salvar o executado. Tente de novo.");
+      alert(`Não consegui salvar ${oQueE}. Tente de novo.`);
     }
   }
+
+  const updateExecutado = (entry, value) => updateCampo(entry, "executado", value, "o executado");
+  const updateConferido = (entry, value) => updateCampo(entry, "conferido", value, "a conferência");
 
   async function sincronizarPlanilha() {
     setSincronizando(true);
@@ -909,8 +921,17 @@ export default function Home() {
   // clínica onde nunca se lançou nada.
   const locaisComRegistro = [...new Set(entries.map((e) => (e.local || "").trim()).filter(Boolean))].sort();
 
+  // Os convênios que aparecem nos registros — inclusive "PARTICULAR", que é
+  // convênio nenhum mas se escolhe do mesmo jeito. Sai dos registros, e não do
+  // cadastro: o cadastro tem os que já foram digitados alguma vez, e oferecer
+  // no filtro um convênio sem nenhum paciente só dá lista vazia.
+  const conveniosComRegistro = [
+    ...new Set(entries.map((e) => (e.convenio || "").trim()).filter(Boolean)),
+  ].sort();
+
   const registrosVisiveis = entries
     .filter((e) => localFiltro === TODOS_OS_LOCAIS || (e.local || "").trim() === localFiltro)
+    .filter((e) => convenioFiltro === TODOS_OS_CONVENIOS || (e.convenio || "").trim() === convenioFiltro)
     .filter((e) => entryMatchesSearch(e, searchQuery))
     .filter((e) => buscando || mesSelecionado === TODOS_OS_MESES || !mesSelecionado || chaveDoMes(e) === mesSelecionado)
     .sort(ordenarPorData);
@@ -1649,6 +1670,34 @@ export default function Home() {
               </select>
             )}
 
+            {/* Filtro de convênio, no mesmo formato do de local. Fechar o mês
+                da Unimed é percorrer só os da Unimed, e antes disso era rolar a
+                lista inteira pulando os outros. A cor no nome ajuda de relance,
+                mas não some com o que não interessa. */}
+            {conveniosComRegistro.length > 1 && (
+              <select
+                value={convenioFiltro}
+                onChange={(ev) => setConvenioFiltro(ev.target.value)}
+                style={{
+                  ...inputStyle,
+                  marginBottom: 10,
+                  fontFamily: "Helvetica, Arial, sans-serif",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: convenioFiltro === TODOS_OS_CONVENIOS ? CORES.suave : corDoConvenio(convenioFiltro) || CORES.escura,
+                  background: convenioFiltro === TODOS_OS_CONVENIOS ? "white" : CORES.clara,
+                  borderColor: convenioFiltro === TODOS_OS_CONVENIOS ? CORES.borda : CORES.principal,
+                }}
+              >
+                <option value={TODOS_OS_CONVENIOS}>Todos os convênios</option>
+                {conveniosComRegistro.map((convenio) => (
+                  <option key={convenio} value={convenio}>
+                    {convenio}
+                  </option>
+                ))}
+              </select>
+            )}
+
             {meses.length > 0 && (
               <SeletorDeMes
                 meses={meses}
@@ -1701,7 +1750,17 @@ export default function Home() {
                 return (
                 <div
                   key={e.id}
-                  style={{ border: `1px solid ${CORES.borda}`, borderRadius: 6, background: "white", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}
+                  style={{
+                    border: `1px solid ${CORES.borda}`,
+                    borderRadius: 6,
+                    // Cartão conferido fica cinza: é o que faz o que ainda falta
+                    // conferir saltar da lista, sem precisar contar nada.
+                    background: e.conferido === true ? CORES.conferido : "white",
+                    padding: "12px 14px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
                 >
                   {/* Fechado, o cartão mostra só o nome: a lista existe para
                       percorrer procurando um paciente, e o resto dos dados
@@ -1710,10 +1769,23 @@ export default function Home() {
                     onClick={() => setExpandido(aberto ? null : e.id)}
                     style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer" }}
                   >
-                    {/* A cor do convênio no nome: é o que deixa reconhecer o
-                        convênio percorrendo a lista, sem parar para ler.
-                        Convênio fora da lista de cores fica na cor normal. */}
-                    <div style={{ fontSize: 16, lineHeight: 1.35, color: corDoConvenio(e.convenio) || CORES.tinta, minWidth: 0 }}>
+                    {/* A caixa da conferência da secretária. Fica fora do
+                        cartão que abre — `stopPropagation`, senão marcar
+                        também abriria o registro. Não vai para a planilha: é
+                        controle de quem confere, não dado da cirurgia. */}
+                    <input
+                      type="checkbox"
+                      checked={e.conferido === true}
+                      onClick={(ev) => ev.stopPropagation()}
+                      onChange={(ev) => updateConferido(e, ev.target.checked)}
+                      title="Conferido"
+                      style={{ width: 20, height: 20, flexShrink: 0, cursor: "pointer", accentColor: CORES.principal }}
+                    />
+
+                    {/* A cor do convênio no nome: é o que deixa reconhecer de
+                        relance para qual planilha o paciente vai — verde
+                        Unimed, azul particular, laranja os demais. */}
+                    <div style={{ fontSize: 16, lineHeight: 1.35, color: corDoConvenio(e.convenio) || CORES.tinta, minWidth: 0, flex: 1 }}>
                       {/* O respiro entre nome e selo é margem à DIREITA do
                           nome, e não à esquerda do selo: assim ele some junto
                           com a quebra quando o selo cai sozinho na linha
@@ -1884,6 +1956,7 @@ export default function Home() {
                 <ViewField key={f.key} label={f.appLabel || f.label} value={viewingEntry[f.key]} />
               ))}
               <ViewField label="Urgência" value={viewingEntry.urgencia ? "Sim" : "Não"} />
+              <ViewField label="Conferido" value={viewingEntry.conferido ? "Sim" : "Não"} />
               <ViewField label="Executado" value={rotuloDaExecucao(viewingEntry.executado)} />
               <ViewField label="Procedimento complementar" value={(viewingEntry.procedimentoComplementar || []).join(", ")} />
               <ViewField label="Observação" value={viewingEntry.observacao} />
