@@ -1,5 +1,6 @@
 import { kv } from "../../lib/kv";
 import { TIPOS_DE_CADASTRO, CADASTROS_EM_CAIXA_ALTA, emCaixaAlta } from "../../lib/campos";
+import { nomeCurtoDoConvenio, semCodigoNaFrente } from "../../lib/convenios";
 import { comTrava } from "../../lib/trava";
 
 // Prefixo próprio desta equipe. Cada app tem seu próprio banco KV, então a
@@ -12,9 +13,17 @@ const KEY = "guias:cadastros";
 // mesmo tempo leriam a mesma lista e a última gravação apagaria a outra.
 const TRAVA = "guias:cadastros:trava";
 
-/** O nome como ele deve ficar guardado, conforme o tipo de cadastro. */
+/**
+ * O nome como ele deve ficar guardado, conforme o tipo de cadastro.
+ *
+ * O convênio entra pelo nome curto, a mesma regra que vale no registro. Sem
+ * isso a lista guardaria o que já entrou antes — "UNIMED CAMPINAS" ao lado de
+ * "UNIMED" —, e o autocompletar ofereceria as duas. Como `getData` regrava o
+ * que converteu, a lista se limpa sozinha na primeira leitura.
+ */
 function comoGuardar(tipo, nome) {
   const limpo = (nome || "").toString().trim();
+  if (tipo === "convenios") return emCaixaAlta(nomeCurtoDoConvenio(semCodigoNaFrente(limpo)));
   return CADASTROS_EM_CAIXA_ALTA.includes(tipo) ? emCaixaAlta(limpo) : limpo;
 }
 

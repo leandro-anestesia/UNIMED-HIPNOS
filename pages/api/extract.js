@@ -1,3 +1,4 @@
+import { nomeCurtoDoConvenio, semCodigoNaFrente } from "../../lib/convenios";
 import { normalizarTexto, semTratamento } from "../../lib/texto";
 
 export const config = {
@@ -85,46 +86,14 @@ Regras gerais:
 - Não corrija o número da guia nem o da carteira: devolva os dígitos como estão na imagem.`;
 
 /**
- * O que a guia imprime, e o nome que a equipe usa.
+ * O convênio como a equipe o chama: sem o código na frente e pelo nome curto.
  *
- * UNIPAR é como a guia identifica quem paga do próprio bolso: no controle da
- * equipe isso é PARTICULAR. E a Notre Dame vem com razão social inteira —
- * "NOTRE DAME INTERMEDICA SAUDE S.A." —, que na lista só ocupa espaço.
- *
- * A troca é feita aqui, e não na instrução de leitura, porque leitura é pedido
- * e isto é regra: o modelo transcreve o que está impresso, e a tradução é
- * sempre a mesma. Sai em caixa alta porque o campo inteiro é em caixa alta.
- */
-const APELIDOS_DE_CONVENIO = {
-  UNIPAR: "PARTICULAR",
-  NOTRE: "NOTREDAME",
-};
-
-/**
- * Tira o código que vem colado ao nome do convênio.
- *
- * A guia costuma imprimir "0110 - UNIMED CAMPINAS"; o que serve é o nome. A
- * instrução já pede o nome sozinho, mas a leitura às vezes devolve o par
- * inteiro, e aqui isso não depende de sorte.
- *
- * Só corta quando o pedaço antes do traço tem número: assim um convênio cujo
- * nome de verdade tenha traço — "SAO FRANCISCO - SAUDE" — fica inteiro.
+ * As duas regras moram em `lib/convenios.js`, porque não valem só para a foto:
+ * o mesmo nome curto tem de sair quando alguém digita à mão ou corrige direto
+ * na planilha, senão o cadastro junta três grafias do mesmo convênio.
  */
 function nomeDoConvenio(valor) {
-  const texto = (valor || "").toString().trim();
-  const semCodigo = texto
-    .replace(/^[A-Za-z0-9.]{1,10}\s*[-–—]\s*/, (achado) => (/\d/.test(achado) ? "" : achado))
-    .trim();
-
-  // Palavra inteira, em qualquer posição do nome: a guia escreve "NOTRE DAME
-  // INTERMEDICA SAUDE S.A." e "UNIPAR SAUDE", e o resto não interessa. Palavra
-  // inteira, e não pedaço, para um "UNIPARANA" não virar particular.
-  const palavras = normalizarTexto(semCodigo).split(/\s+/).filter(Boolean);
-  const apelido = Object.entries(APELIDOS_DE_CONVENIO).find(([impresso]) =>
-    palavras.includes(normalizarTexto(impresso))
-  );
-
-  return apelido ? apelido[1] : semCodigo;
+  return nomeCurtoDoConvenio(semCodigoNaFrente(valor));
 }
 
 /**
