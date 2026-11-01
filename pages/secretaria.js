@@ -48,6 +48,38 @@ const COLUNAS_DO_MODELO = {
   particular: [COLUNA_EXECUTADO, ...COLUNAS_PARTICULAR],
 };
 
+/**
+ * O que não aparece de saída, por planilha.
+ *
+ * Quinze colunas não cabem em tela nenhuma sem encolher a letra a ponto de não
+ * se ler. O padrão é o que cabe numa tela de notebook sem rolar para o lado, e
+ * o que sai é o que a conferência consulta de vez em quando, não o tempo todo:
+ * o horário do lançamento, que só desempata dois registros do mesmo dia; o
+ * local e os dois nomes de médico, que ela confere abrindo a guia e não a
+ * tabela; o complementar por extenso, que o "PC Executado" já resume; e a
+ * observação, que é campo de exceção.
+ *
+ * Cada uma volta num clique no botão "Colunas" — e aí a tabela rola, que é o
+ * preço justo de pedir mais do que cabe.
+ *
+ * A escolha fica guardada no aparelho dela. Não é decisão do app qual coluna
+ * importa — é dela, e muda conforme o mês.
+ */
+const OCULTAS_POR_PADRAO = {
+  convenio: [
+    "horaLancamento",
+    "local",
+    "cirurgiao",
+    "anestesista",
+    "procedimentoComplementar",
+    "observacao",
+  ],
+  outros: ["local", "cirurgiao", "anestesista", "procedimentoComplementar", "observacao"],
+  particular: ["local", "atendimento", "cirurgiao", "inicio", "termino", "observacao"],
+};
+
+const COLUNAS_GUARDADAS = "guias:secretaria:colunas";
+
 /** O que ela edita direto na célula. O resto é leitura. */
 const EDITAVEIS = new Set([
   "executado",
@@ -103,6 +135,34 @@ export default function Secretaria() {
   const [filtros, setFiltros] = useState({});
   const [pendencia, setPendencia] = useState("");
   const [selecionados, setSelecionados] = useState(new Set());
+
+  const [ocultas, setOcultas] = useState(OCULTAS_POR_PADRAO);
+  const [escolhendoColunas, setEscolhendoColunas] = useState(false);
+
+  useEffect(() => {
+    try {
+      const guardado = JSON.parse(window.localStorage.getItem(COLUNAS_GUARDADAS) || "null");
+      if (guardado) setOcultas({ ...OCULTAS_POR_PADRAO, ...guardado });
+    } catch {
+      // aparelho com armazenamento bloqueado: segue com o padrão
+    }
+  }, []);
+
+  function alternarColuna(key) {
+    setOcultas((atual) => {
+      const doModelo = atual[modelo] || [];
+      const novo = {
+        ...atual,
+        [modelo]: doModelo.includes(key) ? doModelo.filter((k) => k !== key) : [...doModelo, key],
+      };
+      try {
+        window.localStorage.setItem(COLUNAS_GUARDADAS, JSON.stringify(novo));
+      } catch {
+        // idem
+      }
+      return novo;
+    });
+  }
 
   const [aviso, setAviso] = useState("");
   const avisoTimer = useRef(null);
@@ -258,7 +318,8 @@ export default function Secretaria() {
     XLSX.writeFile(livro, `${PREFIXO_ARQUIVO}-${modelo}-${mes}.xlsx`);
   }
 
-  const colunas = COLUNAS_DO_MODELO[modelo];
+  const todasAsColunas = COLUNAS_DO_MODELO[modelo];
+  const colunas = todasAsColunas.filter((c) => !(ocultas[modelo] || []).includes(c.key));
   const mesesOrdenados = [...new Set([mes, ...meses])].sort().reverse();
 
   return (
@@ -320,6 +381,63 @@ export default function Secretaria() {
               </option>
             ))}
           </select>
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setEscolhendoColunas((v) => !v)}
+              style={{
+                ...btnDiscreto,
+                flex: "0 0 auto",
+                minHeight: ALVO,
+                ...(escolhendoColunas ? { background: CORES.clara, borderColor: CORES.principal } : null),
+              }}
+            >
+              ⚙ Colunas
+            </button>
+            {escolhendoColunas && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "calc(100% + 6px)",
+                  zIndex: 50,
+                  minWidth: 240,
+                  maxHeight: 420,
+                  overflowY: "auto",
+                  padding: ESPACO[3],
+                  borderRadius: 8,
+                  background: "white",
+                  border: `1px solid ${CORES.borda}`,
+                  boxShadow: "0 8px 28px rgba(26,26,26,0.16)",
+                  textAlign: "left",
+                }}
+              >
+                <div style={{ fontSize: TEXTO.miudo, color: CORES.suave, marginBottom: ESPACO[2] }}>
+                  O que aparece na tabela
+                </div>
+                {todasAsColunas.map((c) => (
+                  <label
+                    key={c.key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: ESPACO[2],
+                      padding: `${ESPACO[1]}px 0`,
+                      fontSize: TEXTO.apoio,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!(ocultas[modelo] || []).includes(c.key)}
+                      onChange={() => alternarColuna(c.key)}
+                      style={{ width: 16, height: 16, accentColor: CORES.principal }}
+                    />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
           <button onClick={carregar} style={{ ...btnDiscreto, flex: "0 0 auto", minHeight: ALVO }}>
             ↻ Atualizar
           </button>
@@ -463,17 +581,33 @@ export default function Secretaria() {
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: TEXTO.apoio }}>
             <thead>
               <tr style={{ background: CORES.escura, color: CORES.sobreEscura }}>
-                <th style={{ ...th, width: 36 }}>
-                  <input
-                    type="checkbox"
-                    checked={visiveis.length > 0 && selecionados.size === visiveis.length}
-                    onChange={(ev) =>
-                      setSelecionados(ev.target.checked ? new Set(visiveis.map((e) => e.id)) : new Set())
-                    }
-                    style={{ width: 18, height: 18, cursor: "pointer" }}
-                  />
+                {/* Dois quadradinhos lado a lado são dois significados, e sem
+                    nome não há como adivinhar qual é qual. O da esquerda junta
+                    linhas para marcar várias de uma vez; o da direita é a
+                    conferência daquela linha. Daí o rótulo em cima de cada um e
+                    a divisória entre eles. */}
+                <th style={{ ...th, width: 54, textAlign: "center" }} title="Marcar várias linhas de uma vez">
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                    <input
+                      type="checkbox"
+                      checked={visiveis.length > 0 && selecionados.size === visiveis.length}
+                      onChange={(ev) =>
+                        setSelecionados(ev.target.checked ? new Set(visiveis.map((e) => e.id)) : new Set())
+                      }
+                      style={{ width: 18, height: 18, cursor: "pointer" }}
+                    />
+                    <span style={{ fontSize: 9, fontWeight: 400, color: CORES.acento }}>marcar</span>
+                  </div>
                 </th>
-                <th style={{ ...th, width: 36 }} title="Conferido">✓</th>
+                <th
+                  style={{ ...th, width: 62, textAlign: "center", borderRight: `1px solid ${CORES.suave}` }}
+                  title="Conferido por mim"
+                >
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                    <span style={{ fontSize: 14, lineHeight: "18px" }}>✓</span>
+                    <span style={{ fontSize: 9, fontWeight: 400, color: CORES.acento }}>conferido</span>
+                  </div>
+                </th>
                 {colunas.map((c) => (
                   <th key={c.key} style={th}>
                     {c.label}
@@ -531,8 +665,17 @@ export default function Secretaria() {
 
 /* ── Peças ──────────────────────────────────────────────────────────────── */
 
+/** A largura de cada campo editável, pelo que de fato cabe dentro dele. */
+const LARGURA_DO_CAMPO = {
+  nGuia: 115,
+  nCarteira: 150,
+  atendimento: 95,
+  quemRecebeu: 140,
+  observacao: 200,
+};
+
 const th = {
-  padding: `${ESPACO[2]}px ${ESPACO[3]}px`,
+  padding: `${ESPACO[2]}px ${ESPACO[2]}px`,
   textAlign: "left",
   fontSize: TEXTO.miudo,
   letterSpacing: "0.04em",
@@ -543,7 +686,7 @@ const th = {
 };
 
 const td = {
-  padding: `${ESPACO[1]}px ${ESPACO[2]}px`,
+  padding: `${ESPACO[1]}px ${ESPACO[1]}px`,
   borderTop: `1px solid ${CORES.bordaSuave}`,
   verticalAlign: "middle",
 };
@@ -648,7 +791,7 @@ function Linha({ entry, colunas, modelo, marcado, onMarcar, onGravar }) {
           style={{ width: 18, height: 18, cursor: "pointer" }}
         />
       </td>
-      <td style={{ ...td, textAlign: "center" }}>
+      <td style={{ ...td, textAlign: "center", borderRight: `1px solid ${CORES.borda}` }}>
         <input
           type="checkbox"
           checked={entry.conferido === true}
@@ -678,15 +821,18 @@ function Celula({ entry, coluna, modelo, onGravar }) {
   if (!editavel) {
     const texto = valorDaColuna(entry, coluna);
     const cor = coluna.key === "convenio" ? corDoConvenio(valor) : null;
-    const estreito = coluna.key === "procedimentos" || coluna.key === "procedimentoComplementar";
+    const longo = coluna.key === "procedimentos" || coluna.key === "procedimentoComplementar";
     return (
       <td
         style={{
           ...td,
           color: cor || "inherit",
           fontWeight: cor ? 600 : 400,
-          maxWidth: estreito ? 340 : 220,
-          whiteSpace: estreito ? "normal" : "nowrap",
+          // Numa linha só, com reticências: a descrição TUSS é longa e quebrava
+          // a linha em três — três linhas por registro é um terço dos registros
+          // na tela. O texto inteiro fica no `title`, ao passar o mouse.
+          maxWidth: longo ? 230 : 165,
+          whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
         }}
@@ -754,7 +900,7 @@ function Celula({ entry, coluna, modelo, onGravar }) {
           ...inputStyle,
           padding: "6px 8px",
           fontSize: TEXTO.apoio,
-          width: coluna.key === "observacao" ? 220 : coluna.moeda ? 110 : 150,
+          width: LARGURA_DO_CAMPO[coluna.key] || (coluna.moeda ? 100 : 130),
           background: "transparent",
           borderColor: "transparent",
         }}
