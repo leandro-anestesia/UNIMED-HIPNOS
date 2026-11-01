@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
 import { estadoDe, foiExecutada, opcoesDe, padraoDe, rotuloDe } from "../lib/estados";
-import { LOCAL_PADRAO, NOMES_DE_LOCAL, leituraDoLocal } from "../lib/locais";
+import { NOMES_DE_LOCAL, leituraDoLocal } from "../lib/locais";
 import { modeloDoRegistro } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import {
@@ -75,9 +75,6 @@ const TODOS_OS_MESES = "todos";
 /** O filtro de local da lista, quando nenhum está escolhido. */
 const TODOS_OS_LOCAIS = "todos";
 const TODOS_OS_CONVENIOS = "todos";
-
-/** Onde o aparelho guarda o local escolhido na tela inicial. */
-const LOCAL_GUARDADO = "guias:local";
 
 /**
  * Este campo faz sentido neste registro?
@@ -210,7 +207,7 @@ function emptyDraft() {
   d.procedimentos = [];
   d.procedimentoComplementar = [];
   d.observacao = "";
-  d.local = LOCAL_PADRAO;
+  d.local = "";
   d.executado = padraoDe("executado");
   d.pcExecutado = padraoDe("pcExecutado");
   d.recebido = padraoDe("recebido");
@@ -288,7 +285,7 @@ export default function Home() {
    * ao recarregar, e aparece marcado na tela inicial — é o que impede lançar
    * um caso do hospital achando que o local ainda está vazio.
    */
-  const [localAtivo, setLocalAtivo] = useState(LOCAL_PADRAO);
+  const [localAtivo, setLocalAtivo] = useState("");
   // Qual cartão da lista está aberto. Um de cada vez: a lista existe para
   // percorrer, e vários abertos a transformariam de novo num paredão.
   const [expandido, setExpandido] = useState(null);
@@ -344,26 +341,17 @@ export default function Home() {
     loadCadastros();
   }, [loadEntries, loadCadastros]);
 
-  // Só depois de montar: no servidor não existe localStorage, e ler lá quebraria
-  // a renderização da página.
-  useEffect(() => {
-    try {
-      // Um local guardado que saiu da lista — a lista mudou — não pode voltar:
-      // ele mandaria o registro para um lugar que não existe mais.
-      const guardado = window.localStorage.getItem(LOCAL_GUARDADO);
-      if (guardado && NOMES_DE_LOCAL.includes(guardado)) setLocalAtivo(guardado);
-    } catch {
-      // aparelho com armazenamento bloqueado: segue sem lembrar a escolha
-    }
-  }, []);
-
+  /**
+   * O local não é lembrado entre uma abertura e outra, de propósito.
+   *
+   * Campo que volta preenchido é campo que não se lê: quem opera no Bairral
+   * abriria o app, fotografaria a guia e salvaria — e o registro iria para o
+   * lugar do dia anterior, sem ninguém ter errado de digitar. O local sai em
+   * coluna nas três planilhas e é por ele que a conferência diz onde a cirurgia
+   * foi; local errado é pior do que local em branco, porque o branco se vê.
+   */
   function escolherLocal(local) {
     setLocalAtivo(local);
-    try {
-      window.localStorage.setItem(LOCAL_GUARDADO, local);
-    } catch {
-      // idem: não lembrar é menos grave do que não deixar escolher
-    }
   }
 
   // Memoizado porque entra na dependência do efeito abaixo: recriar o array a
@@ -540,6 +528,10 @@ export default function Home() {
     }
     if (!(mapa.anestesista || "").trim()) {
       setErrorMsg("Informe o anestesiologista que fez os procedimentos.");
+      return;
+    }
+    if (!localAtivo) {
+      setErrorMsg("Escolha o local antes de lançar o mapa.");
       return;
     }
 
@@ -723,6 +715,11 @@ export default function Home() {
     // toque duplo rápido dispararia dois envios antes disso. O `salvando` serve
     // para o visual do botão.
     if (salvandoRef.current) return;
+
+    if (!(draft.local || "").trim()) {
+      setErrorMsg("Escolha o local da cirurgia para salvar o registro.");
+      return;
+    }
 
     if (!(draft.anestesista || "").trim()) {
       setErrorMsg("Informe o anestesiologista que fez o procedimento para salvar o registro.");
@@ -1088,20 +1085,22 @@ export default function Home() {
                 botões logo abaixo. Aqui ocupa uma linha e mostra o escolhido
                 sem abrir nada.
 
-                Sem opção em branco: a lista é fechada e o campo é obrigatório,
-                com o Renascença já marcado por ser o caso mais comum. */}
+                Começa vazio e não é lembrado: a escolha é consciente, toda
+                vez. Enquanto nada está escolhido o seletor fica neutro; com
+                local, acende — a mesma distinção que o filtro da lista usa. */}
             <Field label="Local">
               <select
                 value={localAtivo}
                 onChange={(ev) => escolherLocal(ev.target.value)}
                 style={{
                   ...inputStyle,
-                  fontWeight: 600,
-                  color: CORES.escura,
-                  background: CORES.clara,
-                  borderColor: CORES.principal,
+                  fontWeight: localAtivo ? 600 : 400,
+                  color: localAtivo ? CORES.escura : CORES.suave,
+                  background: localAtivo ? CORES.clara : "white",
+                  borderColor: localAtivo ? CORES.principal : CORES.borda,
                 }}
               >
+                <option value="">— Escolha o local —</option>
                 {NOMES_DE_LOCAL.map((local) => (
                   <option key={local} value={local}>
                     {local}
@@ -1110,6 +1109,19 @@ export default function Home() {
               </select>
             </Field>
 
+            {!localAtivo && (
+              <div
+                style={{
+                  marginTop: -10,
+                  fontFamily: "Helvetica, Arial, sans-serif",
+                  fontSize: 13,
+                  color: CORES.suave,
+                }}
+              >
+                Escolha o local para começar.
+              </div>
+            )}
+
             {/* Um primário só, e o resto discreto: com quatro botões do mesmo
                 peso, a tela vira uma lista de retângulos e nenhum é o caminho
                 óbvio.
@@ -1117,18 +1129,25 @@ export default function Home() {
                 Qual é o óbvio depende do local: onde a folha do dia traz todos
                 os pacientes, é o mapa; onde se fotografa um por um, é a guia.
                 Quem sabe a diferença é `lib/locais.js`, e o outro botão fica
-                logo abaixo nos dois casos — é peso, não permissão. */}
+                logo abaixo nos dois casos — é peso, não permissão.
+
+                Sem local escolhido, os quatro esperam. Barrar aqui é melhor do
+                que deixar fotografar a guia e recusar na hora de salvar: a
+                leitura custa uma chamada ao modelo e a paciência de quem está
+                no centro cirúrgico. */}
             {leituraDoLocal(localAtivo) === "mapa" ? (
               <button
                 onClick={() => mapaInputRef.current && mapaInputRef.current.click()}
-                style={btnEmpilhado(btnPrimary)}
+                disabled={!localAtivo}
+                style={semLocal(btnEmpilhado(btnPrimary), localAtivo)}
               >
                 📋 Ler mapa cirúrgico
               </button>
             ) : (
               <button
                 onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
-                style={btnEmpilhado(btnPrimary)}
+                disabled={!localAtivo}
+                style={semLocal(btnEmpilhado(btnPrimary), localAtivo)}
               >
                 📷 Fotografar guia ou etiqueta
               </button>
@@ -1138,25 +1157,32 @@ export default function Home() {
               {leituraDoLocal(localAtivo) === "mapa" ? (
                 <button
                   onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
-                  style={btnEmpilhado(btnDiscreto)}
+                  disabled={!localAtivo}
+                  style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
                 >
                   📷 Fotografar etiqueta ou guia
                 </button>
               ) : (
                 <button
                   onClick={() => mapaInputRef.current && mapaInputRef.current.click()}
-                  style={btnEmpilhado(btnDiscreto)}
+                  disabled={!localAtivo}
+                  style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
                 >
                   📋 Ler mapa cirúrgico
                 </button>
               )}
               <button
                 onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
-                style={btnEmpilhado(btnDiscreto)}
+                disabled={!localAtivo}
+                style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
               >
                 🖼 Da galeria
               </button>
-              <button onClick={startManual} style={btnEmpilhado(btnDiscreto)}>
+              <button
+                onClick={startManual}
+                disabled={!localAtivo}
+                style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
+              >
                 ✏️ Preencher manualmente
               </button>
             </div>
@@ -1331,13 +1357,20 @@ export default function Home() {
 
                 // Lista fechada: o local é um dos doze, e digitar não é opção.
                 if (f.opcoes) {
+                  const vazio = !(draft[f.key] || "").trim();
+                  const reprovado = f.required && !!errorMsg && vazio;
                   return (
-                    <Field key={f.key} label={f.appLabel || f.label}>
+                    <Field key={f.key} label={f.required ? `${f.appLabel || f.label} *` : f.appLabel || f.label}>
                       <select
-                        style={inputStyle}
-                        value={draft[f.key] || f.padrao || ""}
+                        style={
+                          reprovado
+                            ? { ...inputStyle, border: `1px solid ${CORES.alerta}`, background: CORES.alertaFundo }
+                            : inputStyle
+                        }
+                        value={draft[f.key] || ""}
                         onChange={(e) => updateDraft(f.key, e.target.value)}
                       >
+                        <option value="">— Escolha —</option>
                         {f.opcoes.map((opcao) => (
                           <option key={opcao} value={opcao}>
                             {opcao}
@@ -2498,6 +2531,11 @@ const inputStyle = {
   lineHeight: "20px",
   background: "white",
 };
+
+/** O botão esmaecido enquanto não há local escolhido. */
+function semLocal(base, localAtivo) {
+  return localAtivo ? base : { ...base, opacity: 0.45, cursor: "default" };
+}
 
 /**
  * O mesmo botão, porém numa pilha vertical.
