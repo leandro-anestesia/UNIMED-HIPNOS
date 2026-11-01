@@ -2,30 +2,21 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
-import {
-  ESTADOS_DE_EXECUCAO,
-  EXECUCAO_PADRAO,
-  estadoDeExecucao,
-  foiExecutada,
-  rotuloDaExecucao,
-  temTresEstados,
-} from "../lib/executado";
-import { HOSPITAL, LOCAIS_PADRAO, temPlanilhaPropria } from "../lib/locais";
-import { localDoModelo, modeloDoRegistro, modelosPresentes } from "../lib/modelos";
+import { estadoDe, foiExecutada, opcoesDe, padraoDe, rotuloDe } from "../lib/estados";
+import { LOCAL_PADRAO, NOMES_DE_LOCAL, leituraDoLocal } from "../lib/locais";
+import { modeloDoRegistro } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import {
   CAMPOS_DO_REGISTRO,
   CAMPOS_MANUAIS,
   CAMPOS_QUE_APRENDEM,
-  COLUNAS,
-  COLUNAS_UNIMED,
-  COLUNAS_CLINICA,
+  COLUNAS_OUTROS,
   COLUNAS_PARTICULAR,
-  ehDeClinica,
+  COLUNAS_UNIMED,
+  ehDaUnimed,
   ehParticular,
   ehUnimed,
   SEPARADOR_PROCEDIMENTOS,
-  temCarimbo,
   TIPOS_DE_CADASTRO,
   valorDaColuna,
 } from "../lib/campos";
@@ -89,9 +80,36 @@ const TODOS_OS_CONVENIOS = "todos";
 const LOCAL_GUARDADO = "guias:local";
 
 /**
- * Como o hospital aparece onde é preciso nomeá-lo: no app ele é o local vazio.
- * Em caixa alta como os nomes das clínicas, que vêm do cadastro assim.
+ * Este campo faz sentido neste registro?
+ *
+ * A regra é uma só, e é a das colunas: o campo aparece quando a planilha de
+ * destino tem a coluna dele. Guia e carteira não existem sem operadora; o
+ * credenciado da Unimed só existe na Unimed; valor, recebido e quem recebeu só
+ * no particular. Perguntar fora disso é perguntar o que não tem onde ser
+ * escrito — e foi assim que o formulário da clínica ficou com três campos
+ * mortos antes.
  */
+function cabeNesteRegistro(campo, entry) {
+  const modelo = modeloDoRegistro(entry);
+  if (campo.soParticular && modelo !== "particular") return false;
+  if (campo.naoParticular && modelo === "particular") return false;
+  if (campo.soUnimed && modelo !== "convenio") return false;
+  return true;
+}
+
+/**
+ * O que foi digitado num campo de dinheiro, como número.
+ *
+ * Aceita vírgula, que é como se digita no Brasil, e devolve "" enquanto o
+ * campo está vazio ou só com o separador — "1," é meio caminho de digitação, e
+ * virar zero no meio da digitação apagaria o que a pessoa está escrevendo.
+ */
+function numeroDigitado(texto) {
+  const limpo = (texto || "").replace(/[^\d,.]/g, "").replace(",", ".");
+  if (limpo === "" || limpo === ".") return "";
+  const numero = Number(limpo);
+  return Number.isFinite(numero) ? numero : "";
+}
 
 /** Chave "AAAA-MM" do lançamento, usada para agrupar por mês. */
 function chaveDoMes(entry) {
@@ -192,8 +210,11 @@ function emptyDraft() {
   d.procedimentos = [];
   d.procedimentoComplementar = [];
   d.observacao = "";
-  d.executado = EXECUCAO_PADRAO;
-  d.urgencia = false;
+  d.local = LOCAL_PADRAO;
+  d.executado = padraoDe("executado");
+  d.pcExecutado = padraoDe("pcExecutado");
+  d.recebido = padraoDe("recebido");
+  d.valor = "";
   d.conferido = false;
   return d;
 }
@@ -267,7 +288,7 @@ export default function Home() {
    * ao recarregar, e aparece marcado na tela inicial — é o que impede lançar
    * um caso do hospital achando que o local ainda está vazio.
    */
-  const [localAtivo, setLocalAtivo] = useState("");
+  const [localAtivo, setLocalAtivo] = useState(LOCAL_PADRAO);
   // Qual cartão da lista está aberto. Um de cada vez: a lista existe para
   // percorrer, e vários abertos a transformariam de novo num paredão.
   const [expandido, setExpandido] = useState(null);
@@ -327,7 +348,10 @@ export default function Home() {
   // a renderização da página.
   useEffect(() => {
     try {
-      setLocalAtivo(window.localStorage.getItem(LOCAL_GUARDADO) || "");
+      // Um local guardado que saiu da lista — a lista mudou — não pode voltar:
+      // ele mandaria o registro para um lugar que não existe mais.
+      const guardado = window.localStorage.getItem(LOCAL_GUARDADO);
+      if (guardado && NOMES_DE_LOCAL.includes(guardado)) setLocalAtivo(guardado);
     } catch {
       // aparelho com armazenamento bloqueado: segue sem lembrar a escolha
     }
@@ -336,8 +360,7 @@ export default function Home() {
   function escolherLocal(local) {
     setLocalAtivo(local);
     try {
-      if (local) window.localStorage.setItem(LOCAL_GUARDADO, local);
-      else window.localStorage.removeItem(LOCAL_GUARDADO);
+      window.localStorage.setItem(LOCAL_GUARDADO, local);
     } catch {
       // idem: não lembrar é menos grave do que não deixar escolher
     }
@@ -347,10 +370,10 @@ export default function Home() {
   // cada render faria o efeito rodar sem necessidade.
   const meses = useMemo(() => mesesDosRegistros(entries), [entries]);
 
-  // A lista do campo de carimbo sai do próprio cadastro, filtrada: o nome
+  // A lista do campo do credenciado sai do próprio cadastro, filtrada: o nome
   // completo é o que está cadastrado, e não uma segunda lista para manter.
-  const comCarimbo = useMemo(
-    () => (cadastros.anestesistas || []).filter(temCarimbo),
+  const credenciados = useMemo(
+    () => (cadastros.anestesistas || []).filter(ehDaUnimed),
     [cadastros.anestesistas]
   );
 
@@ -516,7 +539,7 @@ export default function Home() {
       return;
     }
     if (!(mapa.anestesista || "").trim()) {
-      setErrorMsg("Informe o anestesista que fez os procedimentos.");
+      setErrorMsg("Informe o anestesiologista que fez os procedimentos.");
       return;
     }
 
@@ -531,10 +554,12 @@ export default function Home() {
       cirurgiao: l.cirurgiao || "",
       procedimentos: l.procedimentos.filter(Boolean),
       anestesista,
-      // Carimbo é campo do hospital; na clínica ele nem existe.
-      ...(localAtivo ? {} : { anestesistaCarimbo: temCarimbo(anestesista) ? anestesista : "" }),
-      executado: EXECUCAO_PADRAO,
-      urgencia: false,
+      // Quem fez é quem leva o crédito, quando é credenciado da Unimed.
+      anestesistaCarimbo: ehDaUnimed(anestesista) ? anestesista : "",
+      executado: padraoDe("executado"),
+      pcExecutado: padraoDe("pcExecutado"),
+      recebido: padraoDe("recebido"),
+      valor: "",
       procedimentoComplementar: [],
       observacao: "",
     }));
@@ -553,9 +578,9 @@ export default function Home() {
       }
       const resposta = await r.json();
       await loadEntries();
-      // O mapa também ensina: sem isto, a clínica que só lança por mapa nunca
-      // teria os convênios e os cirurgiões dela no autocompletar.
-      await aprenderCadastros({ local: localAtivo });
+      // O mapa também ensina: sem isto, o local que só lança por mapa nunca
+      // teria os convênios e os cirurgiões dele no autocompletar. O local não
+      // entra mais: é lista fechada, não cadastro.
       for (const linha of marcadas) {
         await aprenderCadastros({ convenio: linha.convenio, cirurgiao: linha.cirurgiao });
       }
@@ -650,7 +675,7 @@ export default function Home() {
     const nome = campo.maiusculo ? valor.toUpperCase() : valor;
     setDraft((d) => {
       const proximo = { ...d, [campo.key]: nome };
-      if (campo.key === "anestesista" && temCarimbo(nome)) proximo.anestesistaCarimbo = nome;
+      if (campo.key === "anestesista" && ehDaUnimed(nome)) proximo.anestesistaCarimbo = nome;
       return proximo;
     });
   }
@@ -700,7 +725,7 @@ export default function Home() {
     if (salvandoRef.current) return;
 
     if (!(draft.anestesista || "").trim()) {
-      setErrorMsg("Informe o anestesista que fez o procedimento para salvar o registro.");
+      setErrorMsg("Informe o anestesiologista que fez o procedimento para salvar o registro.");
       return;
     }
 
@@ -807,7 +832,7 @@ export default function Home() {
    * Abre um registro novo com os dados deste.
    *
    * Serve ao caso comum de dois lançamentos quase iguais — o mesmo paciente com
-   * um segundo procedimento, ou a mesma dupla de cirurgião e anestesista no
+   * um segundo procedimento, ou a mesma dupla de cirurgião e anestesiologista no
    * paciente seguinte. Redigitar tudo é onde nasce a divergência de grafia entre
    * duas linhas que deveriam combinar.
    *
@@ -922,13 +947,6 @@ export default function Home() {
   // clínica onde nunca se lançou nada.
   const locaisComRegistro = [...new Set(entries.map((e) => (e.local || "").trim()).filter(Boolean))].sort();
 
-  // Os locais oferecidos na tela inicial: os que vêm de fábrica mais os que o
-  // cadastro aprendeu. Juntos e sem repetir — um local cadastrado à mão com a
-  // mesma grafia de um padrão apareceria duas vezes na lista.
-  const locaisParaEscolher = [
-    ...new Set([...LOCAIS_PADRAO, ...(cadastros.locais || [])].map((l) => l.trim()).filter(Boolean)),
-  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
-
   // Os convênios que aparecem nos registros — inclusive "PARTICULAR", que é
   // convênio nenhum mas se escolhe do mesmo jeito. Sai dos registros, e não do
   // cadastro: o cadastro tem os que já foram digitados alguma vez, e oferecer
@@ -947,16 +965,14 @@ export default function Home() {
   const resumo = {
     total: registrosVisiveis.length,
     executados: registrosVisiveis.filter((e) => foiExecutada(e.executado)).length,
-    urgencias: registrosVisiveis.filter((e) => e.urgencia === true).length,
   };
 
   /**
    * Baixa um arquivo por ano, com um mês por aba.
    *
-   * Um arquivo por planilha do Google: Unimed, outros convênios, particular e
-   * um por clínica.
-   * São conferências diferentes, feitas com gente diferente, e as colunas nem
-   * são as mesmas.
+   * Um arquivo por planilha do Google: Unimed, outros convênios e particular.
+   * São três conferências diferentes, feitas com gente diferente, e as colunas
+   * nem são as mesmas.
    */
   function exportExcel() {
     if (entries.length === 0) return;
@@ -964,35 +980,18 @@ export default function Home() {
     const doModelo = (modelo) => entries.filter((e) => modeloDoRegistro(e) === modelo);
 
     baixarAno(doModelo("convenio"), COLUNAS_UNIMED, PREFIXO_ARQUIVO);
-    baixarAno(doModelo("outros"), COLUNAS, `${PREFIXO_ARQUIVO}-outros-convenios`);
+    baixarAno(doModelo("outros"), COLUNAS_OUTROS, `${PREFIXO_ARQUIVO}-outros-convenios`);
     baixarAno(doModelo("particular"), COLUNAS_PARTICULAR, `${PREFIXO_ARQUIVO}-particular`);
-
-    modelosPresentes(entries)
-      .filter(localDoModelo)
-      .forEach((modelo) => {
-        const local = localDoModelo(modelo);
-        const apelido = normalizarTexto(local).replace(/\s+/g, "-");
-        baixarAno(doModelo(modelo), COLUNAS_CLINICA, `${PREFIXO_ARQUIVO}-${apelido}`);
-      });
   }
 
   function baixarAno(registros, colunas, prefixo) {
     if (registros.length === 0) return;
 
-    const headers = [
-      "Executado",
-      "Data",
-      "Hora do lançamento",
-      ...colunas.map((c) => c.label),
-      "Observação",
-    ];
-    const toRow = (e) => [
-      rotuloDaExecucao(e.executado),
-      formatarData(e.dataCirurgia),
-      horaDoRegistro(e),
-      ...colunas.map((c) => valorDaColuna(e, c)),
-      e.observacao || "",
-    ];
+    // O Executado abre a linha, como na planilha do Google; o resto sai da
+    // lista de colunas daquele modelo, para os dois arquivos combinarem.
+    const todas = [COLUNA_EXECUTADO, ...colunas];
+    const headers = todas.map((c) => c.label);
+    const toRow = (e) => todas.map((c) => valorDaColuna(e, c));
 
     // Agrupa por ano e, dentro do ano, por mês (1-12). Sem data cai em "Sem data".
     const porAno = {};
@@ -1084,42 +1083,42 @@ export default function Home() {
             {/* O local vem antes dos botões porque é a primeira decisão: o que
                 se fotografa num lugar não vale no outro.
 
-                Num seletor, e não em fichas: os nomes das clínicas são longos e
-                viravam três linhas de retângulos arredondados, indistinguíveis
-                dos botões logo abaixo. Aqui ocupa uma linha, mostra o escolhido
-                sem abrir nada, e cabe qualquer número de clínicas. */}
-            {locaisParaEscolher.length > 0 && (
-              <Field label="Local">
-                <select
-                  value={localAtivo}
-                  onChange={(ev) => escolherLocal(ev.target.value)}
-                  style={{
-                    ...inputStyle,
-                    fontWeight: localAtivo ? 600 : 400,
-                    color: localAtivo ? CORES.escura : CORES.tinta,
-                    background: localAtivo ? CORES.clara : "white",
-                    borderColor: localAtivo ? CORES.principal : CORES.borda,
-                  }}
-                >
-                  <option value="">{HOSPITAL}</option>
-                  {locaisParaEscolher.map((local) => (
-                    <option key={local} value={local}>
-                      {local}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            )}
+                Num seletor, e não em fichas: os nomes são longos e viravam
+                três linhas de retângulos arredondados, indistinguíveis dos
+                botões logo abaixo. Aqui ocupa uma linha e mostra o escolhido
+                sem abrir nada.
+
+                Sem opção em branco: a lista é fechada e o campo é obrigatório,
+                com o Renascença já marcado por ser o caso mais comum. */}
+            <Field label="Local">
+              <select
+                value={localAtivo}
+                onChange={(ev) => escolherLocal(ev.target.value)}
+                style={{
+                  ...inputStyle,
+                  fontWeight: 600,
+                  color: CORES.escura,
+                  background: CORES.clara,
+                  borderColor: CORES.principal,
+                }}
+              >
+                {NOMES_DE_LOCAL.map((local) => (
+                  <option key={local} value={local}>
+                    {local}
+                  </option>
+                ))}
+              </select>
+            </Field>
 
             {/* Um primário só, e o resto discreto: com quatro botões do mesmo
                 peso, a tela vira uma lista de retângulos e nenhum é o caminho
-                óbvio. Na clínica, o caminho óbvio é o mapa; no hospital, a
-                guia. */}
-            {/* O mapa só é o caminho óbvio na clínica que tem planilha
-                própria: é lá que a folha do dia traz todos os pacientes. No
-                Vision, no Dimen e nos demais se fotografa guia, como no
-                hospital — e o mapa continua logo abaixo, para quem tiver um. */}
-            {temPlanilhaPropria(localAtivo) ? (
+                óbvio.
+
+                Qual é o óbvio depende do local: onde a folha do dia traz todos
+                os pacientes, é o mapa; onde se fotografa um por um, é a guia.
+                Quem sabe a diferença é `lib/locais.js`, e o outro botão fica
+                logo abaixo nos dois casos — é peso, não permissão. */}
+            {leituraDoLocal(localAtivo) === "mapa" ? (
               <button
                 onClick={() => mapaInputRef.current && mapaInputRef.current.click()}
                 style={btnEmpilhado(btnPrimary)}
@@ -1131,12 +1130,12 @@ export default function Home() {
                 onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
                 style={btnEmpilhado(btnPrimary)}
               >
-                📷 Fotografar guia
+                📷 Fotografar guia ou etiqueta
               </button>
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {temPlanilhaPropria(localAtivo) ? (
+              {leituraDoLocal(localAtivo) === "mapa" ? (
                 <button
                   onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
                   style={btnEmpilhado(btnDiscreto)}
@@ -1177,7 +1176,7 @@ export default function Home() {
         {status === "mapa" && mapa && (
           <div style={{ border: `1px solid ${CORES.borda}`, borderRadius: 8, background: "white", overflow: "hidden" }}>
             <div style={{ background: CORES.clara, padding: "12px 16px", borderBottom: `1px solid ${CORES.borda}`, fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, fontWeight: 600 }}>
-              Mapa de {localAtivo || HOSPITAL} — {mapa.linhas.length} paciente(s)
+              Mapa de {localAtivo} — {mapa.linhas.length} paciente(s)
             </div>
 
             {errorMsg && (
@@ -1198,12 +1197,12 @@ export default function Home() {
                   onChange={(ev) => setMapa((m) => ({ ...m, data: ev.target.value }))}
                 />
               </Field>
-              <Field label="Anestesista que fez os procedimentos *">
+              <Field label="Anestesiologista que fez os procedimentos *">
                 <AutocompleteInput
                   value={mapa.anestesista || ""}
                   onChange={(v) => setMapa((m) => ({ ...m, anestesista: v.toUpperCase() }))}
                   options={cadastros.anestesistas || []}
-                  placeholder="Anestesista"
+                  placeholder="Anestesiologista"
                   invalid={!!errorMsg && !(mapa.anestesista || "").trim()}
                 />
               </Field>
@@ -1328,10 +1327,60 @@ export default function Home() {
                 // cobrada por tempo. Aparecem e somem conforme o convênio, e o
                 // que já tiver sido digitado fica guardado no registro caso o
                 // convênio volte a ser particular.
-                if (f.soParticular && !ehParticular(draft)) return null;
-                // Carteira, atendimento e carimbo são do hospital; na clínica
-                // seriam três perguntas sem resposta em todo lançamento.
-                if (f.soHospital && ehDeClinica(draft)) return null;
+                if (!cabeNesteRegistro(f, draft)) return null;
+
+                // Lista fechada: o local é um dos doze, e digitar não é opção.
+                if (f.opcoes) {
+                  return (
+                    <Field key={f.key} label={f.appLabel || f.label}>
+                      <select
+                        style={inputStyle}
+                        value={draft[f.key] || f.padrao || ""}
+                        onChange={(e) => updateDraft(f.key, e.target.value)}
+                      >
+                        {f.opcoes.map((opcao) => (
+                          <option key={opcao} value={opcao}>
+                            {opcao}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  );
+                }
+
+                // Escolha entre poucas opções: os mesmos botões do Executado.
+                if (f.escolha) {
+                  return (
+                    <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>
+                        {f.appLabel || f.label}
+                      </span>
+                      <Escolha
+                        campo={f.escolha}
+                        valor={draft[f.key]}
+                        onEscolher={(v) => updateDraft(f.key, v)}
+                        grande
+                      />
+                    </div>
+                  );
+                }
+
+                // Dinheiro: teclado numérico e vírgula aceita, porque é como se
+                // digita no Brasil. O registro guarda número.
+                if (f.moeda) {
+                  return (
+                    <Field key={f.key} label={f.appLabel || f.label}>
+                      <input
+                        style={inputStyle}
+                        type="text"
+                        inputMode="decimal"
+                        value={draft[f.key] === "" || draft[f.key] == null ? "" : String(draft[f.key]).replace(".", ",")}
+                        onChange={(e) => updateDraft(f.key, numeroDigitado(e.target.value))}
+                        placeholder="0,00"
+                      />
+                    </Field>
+                  );
+                }
 
                 if (f.hora) {
                   // A duração aparece embaixo do término e recalcula a cada
@@ -1387,14 +1436,14 @@ export default function Home() {
                   </Field>
                 );
 
-                // Urgência anda junto do nº da guia: é o caso de cirurgia sem
-                // guia, ou com guia apenas clínica puxada pelo sistema.
+                // O nº da guia tem tratamento próprio: é o único campo com
+                // conferência de dígito verificador e aviso embaixo.
                 if (f.key !== "nGuia") return campo;
 
                 return (
                   <div key={f.key}>
-                    <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                    <div>
+                      <div style={{ minWidth: 0 }}>
                         <Field label={f.label}>
                           <input
                             style={
@@ -1421,36 +1470,6 @@ export default function Home() {
                           />
                         </Field>
                       </div>
-                      {/* Urgência é do hospital: a clínica opera agendado, e a
-                          planilha dela nem tem essa coluna. */}
-                      {!ehDeClinica(draft) && (
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          padding: "10px 12px",
-                          border: `1px solid ${draft.urgencia ? CORES.alerta : CORES.borda}`,
-                          borderRadius: 4,
-                          background: draft.urgencia ? CORES.alertaFundo : "white",
-                          color: draft.urgencia ? CORES.alerta : CORES.tinta,
-                          fontFamily: "Helvetica, Arial, sans-serif",
-                          fontSize: 14,
-                          fontWeight: draft.urgencia ? 600 : 400,
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!draft.urgencia}
-                          onChange={(e) => updateDraft("urgencia", e.target.checked)}
-                          style={{ width: 16, height: 16 }}
-                        />
-                        Urgência
-                      </label>
-                      )}
                     </div>
 
                     {avisoDaGuia && avisoDaGuia.mensagem && (
@@ -1516,15 +1535,14 @@ export default function Home() {
 
               <div style={{ height: 1, background: CORES.bordaSuave, margin: "4px 0" }} />
 
-              {CAMPOS_MANUAIS.map((f) => {
-                if (f.soHospital && ehDeClinica(draft)) return null;
+              {CAMPOS_MANUAIS.filter((f) => cabeNesteRegistro(f, draft)).map((f) => {
                 const rotulo = f.appLabel || f.label;
                 return (
                   <Field key={f.key} label={f.required ? `${rotulo} *` : rotulo}>
                     <AutocompleteInput
                       value={draft[f.key] || ""}
                       onChange={(v) => updateAnestesista(f, v)}
-                      options={f.somenteComCarimbo ? comCarimbo : cadastros[f.cadastroKey] || []}
+                      options={f.somenteDaUnimed ? credenciados : cadastros[f.cadastroKey] || []}
                       placeholder={rotulo}
                       invalid={f.required && !!errorMsg && !(draft[f.key] || "").trim()}
                     />
@@ -1534,14 +1552,34 @@ export default function Home() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>Executado</span>
-                <EstadoDaExecucao
-                  entry={draft}
+                <Escolha
+                  campo="executado"
                   valor={draft.executado}
                   onEscolher={(estado) => updateDraft("executado", estado)}
                   grande
                 />
               </div>
 
+              {/* O complementar tem o próprio ciclo de cobrança, e só na
+                  conferência da Unimed ele é acompanhado. */}
+              {modeloDoRegistro(draft) === "convenio" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>
+                    PC Executado
+                  </span>
+                  <Escolha
+                    campo="pcExecutado"
+                    valor={draft.pcExecutado}
+                    onEscolher={(estado) => updateDraft("pcExecutado", estado)}
+                    grande
+                  />
+                </div>
+              )}
+
+              {/* O complementar é cobrança à parte, pela operadora: na
+                  planilha particular não há coluna para ele, e aqui seria uma
+                  lista de dez caixas sem destino. */}
+              {!ehParticular(draft) && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>Procedimento Complementar</span>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1616,6 +1654,7 @@ export default function Home() {
                   </div>
                 )}
               </div>
+              )}
 
               <Field label="Observação">
                 <textarea
@@ -1659,12 +1698,12 @@ export default function Home() {
 
             {/* Durante a busca o seletor fica esmaecido e sem efeito,
                 porque a procura roda em todos os meses. */}
-            {/* O filtro de local só aparece quando existe clínica lançada: no
-                uso só do hospital ele seria uma linha sem função.
+            {/* O filtro de local só aparece quando há mais de um local
+                lançado: com um só, ele seria uma linha sem função.
 
-                Num seletor, como na tela inicial: nome de clínica é longo, e em
+                Num seletor, como na tela inicial: nome de local é longo, e em
                 fichas ele empurra o seletor de mês para baixo em três linhas. */}
-            {locaisComRegistro.length > 0 && (
+            {locaisComRegistro.length > 1 && (
               <select
                 value={localFiltro}
                 onChange={(ev) => setLocalFiltro(ev.target.value)}
@@ -1680,7 +1719,6 @@ export default function Home() {
                 }}
               >
                 <option value={TODOS_OS_LOCAIS}>Todos os locais</option>
-                <option value="">{HOSPITAL}</option>
                 {locaisComRegistro.map((local) => (
                   <option key={local} value={local}>
                     {local}
@@ -1739,7 +1777,6 @@ export default function Home() {
                 <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.tenue, marginTop: 2 }}>
                   {resumo.total} {resumo.total === 1 ? "registro" : "registros"}
                   {` · ${resumo.executados} executado${resumo.executados === 1 ? "" : "s"}`}
-                  {resumo.urgencias > 0 && ` · ${resumo.urgencias} urgência${resumo.urgencias === 1 ? "" : "s"}`}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -1805,47 +1842,20 @@ export default function Home() {
                         relance para qual planilha o paciente vai — verde
                         Unimed, azul particular, laranja os demais. */}
                     <div style={{ fontSize: 16, lineHeight: 1.35, color: corDoConvenio(e.convenio) || CORES.tinta, minWidth: 0, flex: 1 }}>
-                      {/* O respiro entre nome e selo é margem à DIREITA do
-                          nome, e não à esquerda do selo: assim ele some junto
-                          com a quebra quando o selo cai sozinho na linha
-                          seguinte, em vez de virar um recuo. */}
-                      <span style={{ marginRight: e.urgencia ? 8 : 0 }}>{e.paciente || "(sem nome)"}</span>
-                      {e.urgencia && (
-                        <span
-                          style={{
-                            display: "inline-block",
-                            verticalAlign: "middle",
-                            position: "relative",
-                            top: -1,
-                            padding: "2px 7px",
-                            borderRadius: 9,
-                            background: CORES.alertaFundo,
-                            color: CORES.alerta,
-                            border: `1px solid ${CORES.alerta}`,
-                            fontFamily: "Helvetica, Arial, sans-serif",
-                            fontSize: 9,
-                            lineHeight: "13px",
-                            letterSpacing: "0.04em",
-                            fontWeight: 600,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          URGÊNCIA
-                        </span>
-                      )}
+                      {e.paciente || "(sem nome)"}
                     </div>
 
                     {/* O executado continua visível de fora: é o estado que se
                         procura percorrendo a lista, e abrir cartão por cartão
                         para vê-lo desfaria a serventia de fechar. */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      {estadoDeExecucao(e.executado) === "sim" && (
+                      {estadoDe("executado", e.executado) === "sim" && (
                         <span style={{ color: CORES.principal, fontSize: 14, fontWeight: 700 }}>✓</span>
                       )}
                       {/* O incompleto precisa de marca própria: sem ela, de fora
                           ele se confunde com o que não foi feito, que é o
                           contrário do motivo de o estado existir. */}
-                      {estadoDeExecucao(e.executado) === "incompleto" && (
+                      {estadoDe("executado", e.executado) === "incompleto" && (
                         <span style={{ color: CORES.avisoTinta, fontSize: 11, fontWeight: 700 }}>
                           INCOMPLETO
                         </span>
@@ -1882,8 +1892,8 @@ export default function Home() {
                         <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, flex: 1, paddingRight: 8 }}>
                           {(e.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS) || "(sem procedimento)"}
                         </div>
-                        <EstadoDaExecucao
-                          entry={e}
+                        <Escolha
+                          campo="executado"
                           valor={e.executado}
                           onEscolher={(estado) => updateExecutado(e, estado)}
                         />
@@ -1914,8 +1924,8 @@ export default function Home() {
               onRemove={(nome) => removeCadastro("cirurgioes", nome)}
             />
             <CadastroSection
-              title="Anestesistas"
-              placeholder="Nome do anestesista"
+              title="Anestesiologistas"
+              placeholder="Nome do anestesiologista"
               items={cadastros.anestesistas}
               onAdd={(nome) => addCadastro("anestesistas", nome)}
               onImportar={(nomes) => importarCadastros("anestesistas", nomes)}
@@ -1923,15 +1933,11 @@ export default function Home() {
             />
             {/* Estas duas listas se enchem sozinhas, a cada registro salvo.
                 Estão aqui para o caso contrário: apagar um nome que entrou
-                escrito errado. */}
-            <CadastroSection
-              title="Locais"
-              placeholder="Nome da clínica"
-              items={cadastros.locais}
-              onAdd={(nome) => addCadastro("locais", nome)}
-              onImportar={(nomes) => importarCadastros("locais", nomes)}
-              onRemove={(nome) => removeCadastro("locais", nome)}
-            />
+                escrito errado.
+
+                Os locais não estão mais aqui: viraram lista fechada no código,
+                e um cadastro que aprende ao lado de uma lista fechada só
+                serviria para criar um décimo terceiro local escrito torto. */}
             <CadastroSection
               title="Convênios"
               placeholder="Nome do convênio"
@@ -1939,6 +1945,14 @@ export default function Home() {
               onAdd={(nome) => addCadastro("convenios", nome)}
               onImportar={(nomes) => importarCadastros("convenios", nomes)}
               onRemove={(nome) => removeCadastro("convenios", nome)}
+            />
+            <CadastroSection
+              title="Quem recebe"
+              placeholder="Nome de quem recebe"
+              items={cadastros.recebedores}
+              onAdd={(nome) => addCadastro("recebedores", nome)}
+              onImportar={(nomes) => importarCadastros("recebedores", nomes)}
+              onRemove={(nome) => removeCadastro("recebedores", nome)}
             />
           </div>
         )}
@@ -1960,24 +1974,26 @@ export default function Home() {
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <ViewField label="Data do lançamento" value={formatarData(viewingEntry.dataCirurgia)} />
               <ViewField label="Hora do lançamento" value={horaDoRegistro(viewingEntry)} />
-              {CAMPOS_DO_REGISTRO.filter(
-                (f) =>
-                  (!f.soParticular || ehParticular(viewingEntry)) &&
-                  (!f.soHospital || !ehDeClinica(viewingEntry))
-              ).map((f) => (
-                <ViewField key={f.key} label={f.label} value={viewingEntry[f.key]} />
+              {CAMPOS_DO_REGISTRO.filter((f) => cabeNesteRegistro(f, viewingEntry)).map((f) => (
+                <ViewField
+                  key={f.key}
+                  label={f.label}
+                  value={f.escolha ? rotuloDe(f.escolha, viewingEntry[f.key]) : viewingEntry[f.key]}
+                />
               ))}
               {ehParticular(viewingEntry) && (
                 <ViewField label="Horas" value={duracaoEntre(viewingEntry.inicio, viewingEntry.termino)} />
               )}
               <ViewField label="Procedimentos" value={(viewingEntry.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS)} />
-              {CAMPOS_MANUAIS.filter((f) => !f.soHospital || !ehDeClinica(viewingEntry)).map((f) => (
+              {CAMPOS_MANUAIS.filter((f) => cabeNesteRegistro(f, viewingEntry)).map((f) => (
                 <ViewField key={f.key} label={f.appLabel || f.label} value={viewingEntry[f.key]} />
               ))}
-              <ViewField label="Urgência" value={viewingEntry.urgencia ? "Sim" : "Não"} />
               <ViewField label="Conferido" value={viewingEntry.conferido ? "Sim" : "Não"} />
-              <ViewField label="Executado" value={rotuloDaExecucao(viewingEntry.executado)} />
+              <ViewField label="Executado" value={rotuloDe("executado", viewingEntry.executado)} />
               <ViewField label="Procedimento complementar" value={(viewingEntry.procedimentoComplementar || []).join(", ")} />
+              {modeloDoRegistro(viewingEntry) === "convenio" && (
+                <ViewField label="PC Executado" value={rotuloDe("pcExecutado", viewingEntry.pcExecutado)} />
+              )}
               <ViewField label="Observação" value={viewingEntry.observacao} />
               <ViewField label="Criado em" value={dataHoraDoInstante(viewingEntry.criadoEm)} />
             </div>
@@ -2014,7 +2030,7 @@ export default function Home() {
 /**
  * Atendimento, guia, carteira e convênio no cartão da lista.
  *
- * Só entra o que o registro tem: registro sem guia (a urgência sem guia) não
+ * Só entra o que o registro tem: registro sem guia ainda não
  * pode virar uma linha com rótulo vazio. O convênio vai sem rótulo — o nome
  * já se identifica sozinho, e a linha inteira precisa caber num celular.
  */
@@ -2037,29 +2053,26 @@ function LinhaDeIdentificacao({ entry }) {
       {numeros.length > 0 && convenio ? " · " : ""}
       {/* Só o nome do convênio muda de cor; os números continuam discretos. */}
       {convenio && <span style={{ color: cor || "inherit", fontWeight: cor ? 600 : 400 }}>{convenio}</span>}
-      {/* O local só aparece quando existe: hospital é o caso comum, e repeti-lo
-          em toda linha seria ruído. */}
+      {/* O local agora existe sempre, e diz onde a cirurgia foi — é parte do
+          que se procura ao percorrer a lista. */}
       {local && ((numeros.length > 0 || convenio ? " · " : "") + local)}
     </div>
   );
 }
 
 /**
- * Os botões de estado da conferência.
+ * Os botões de um campo de escolha — Executado, PC Executado, Recebido.
  *
- * Três na Unimed — Sim, Não e Incompleto —, dois nas demais. O terceiro também
- * aparece num registro que já esteja marcado como incompleto e mudou de
- * convênio: escondê-lo deixaria o estado na tela sem como ser desfeito.
+ * Botões, e não menu suspenso: são duas ou três opções, o alvo é o dedo, e
+ * escolher tem de custar um toque. O `campo` diz quais opções existem; quem
+ * sabe isso é `lib/estados.js`.
  */
-function EstadoDaExecucao({ entry, valor, onEscolher, grande }) {
-  const atual = estadoDeExecucao(valor);
-  const opcoes = ESTADOS_DE_EXECUCAO.filter(
-    (e) => e.valor !== "incompleto" || temTresEstados(modeloDoRegistro(entry)) || atual === "incompleto"
-  );
+function Escolha({ campo, valor, onEscolher, grande }) {
+  const atual = estadoDe(campo, valor);
 
   return (
     <div style={{ display: "flex", gap: grande ? 8 : 6, flexShrink: 0 }}>
-      {opcoes.map((estado) => (
+      {opcoesDe(campo).map((estado) => (
         <button
           key={estado.valor}
           type="button"
