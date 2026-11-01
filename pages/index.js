@@ -1,4 +1,20 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import {
+  ALVO,
+  ESPACO,
+  TEXTO,
+  apoio,
+  btnDiscreto,
+  btnIcone,
+  btnPrimary,
+  btnSecondary,
+  chipMes,
+  chipMesAtivo,
+  execBtn,
+  iconBtn,
+  inputStyle,
+  rotulo,
+} from "../lib/estilo";
 import * as XLSX from "xlsx";
 import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
@@ -274,6 +290,29 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [mesSelecionado, setMesSelecionado] = useState(null); // null = ainda não escolhido
   const [sincronizando, setSincronizando] = useState(false);
+
+  /**
+   * O aviso que desliza do rodapé, no lugar do `alert()`.
+   *
+   * `alert()` trava a tela, exige um toque para sumir e tem cara de erro de
+   * sistema — num app de centro cirúrgico, parece que alguma coisa quebrou
+   * mesmo quando a mensagem é "salvo".
+   *
+   * Aviso curto some sozinho em cinco segundos. Aviso com mais de uma linha
+   * fica até ser fechado: é relatório — o que a sincronização trouxe, o que ela
+   * não conseguiu aceitar —, e some antes de ser lido não serve para nada.
+   */
+  const [aviso, setAviso] = useState(null);
+  const avisoTimer = useRef(null);
+
+  const avisar = useCallback((texto, tipo = "ok") => {
+    if (avisoTimer.current) clearTimeout(avisoTimer.current);
+    const fixo = texto.includes("\n");
+    setAviso({ texto, tipo, fixo });
+    if (!fixo) avisoTimer.current = setTimeout(() => setAviso(null), 5000);
+  }, []);
+
+  useEffect(() => () => avisoTimer.current && clearTimeout(avisoTimer.current), []);
   const [salvando, setSalvando] = useState(false);
   const salvandoRef = useRef(false);
   const [guiaInfo, setGuiaInfo] = useState(null);
@@ -374,7 +413,7 @@ export default function Home() {
     setMesSelecionado(meses.some((m) => m.chave === atual) ? atual : meses[0].chave);
   }, [meses, mesSelecionado]);
 
-  async function addCadastro(tipo, nome, { avisar = true } = {}) {
+  async function addCadastro(tipo, nome, { avisarFalha = true } = {}) {
     try {
       const r = await fetch("/api/cadastros", {
         method: "POST",
@@ -387,7 +426,7 @@ export default function Home() {
       return true;
     } catch (e) {
       console.error(e);
-      if (avisar) alert("Não consegui salvar o cadastro. Tente de novo.");
+      if (avisarFalha) avisar("Não consegui salvar o cadastro. Tente de novo.", "erro");
       return false;
     }
   }
@@ -403,7 +442,7 @@ export default function Home() {
     const falhas = [];
     let gravados = 0;
     for (const nome of nomes) {
-      if (await addCadastro(tipo, nome, { avisar: false })) gravados++;
+      if (await addCadastro(tipo, nome, { avisarFalha: false })) gravados++;
       else falhas.push(nome);
     }
     return { gravados, falhas };
@@ -428,7 +467,7 @@ export default function Home() {
         (n) => normalizarTexto(n) === normalizarTexto(valor)
       );
       if (jaTem) continue;
-      await addCadastro(f.cadastroKey, valor, { avisar: false });
+      await addCadastro(f.cadastroKey, valor, { avisarFalha: false });
     }
   }
 
@@ -440,7 +479,7 @@ export default function Home() {
       setCadastros(comTodosOsTipos(data));
     } catch (e) {
       console.error(e);
-      alert("Não consegui remover o cadastro. Tente de novo.");
+      avisar("Não consegui remover o cadastro. Tente de novo.", "erro");
     }
   }
 
@@ -578,7 +617,7 @@ export default function Home() {
       }
 
       const pulados = (resposta.duplicados || []).length;
-      alert(
+      avisar(
         `${resposta.gravados} lançamento(s) do mapa.` +
           (pulados > 0 ? `\n${pulados} já estava(m) no app e foi(ram) pulado(s).` : "")
       );
@@ -860,7 +899,7 @@ export default function Home() {
       if (!r.ok) throw new Error(await mensagemDeErro(r));
     } catch (e) {
       console.error(e);
-      alert("Não consegui apagar o registro. Ele continua lá; tente de novo.");
+      avisar("Não consegui apagar o registro. Ele continua lá; tente de novo.", "erro");
     }
     await loadEntries();
   }
@@ -885,7 +924,7 @@ export default function Home() {
     } catch (e) {
       console.error(e);
       setEntries((prev) => prev.map((x) => (x.id === entry.id ? entry : x)));
-      alert(`Não consegui salvar ${oQueE}. Tente de novo.`);
+      avisar(`Não consegui salvar ${oQueE}. Tente de novo.`, "erro");
     }
   }
 
@@ -910,23 +949,23 @@ export default function Home() {
       // O que a planilha mudou e o app não pôde aceitar precisa aparecer: em
       // silêncio, a pessoa acharia que a correção dela valeu.
       const recusadas = data.recusadas || [];
-      const aviso = recusadas.length
+      const pendencias = recusadas.length
         ? "\n\nNão consegui aceitar:\n" +
           recusadas.map((x) => `· ${x.paciente || "(sem nome)"} — ${x.coluna}: ${x.motivo}`).join("\n")
         : "";
 
       if (data.configurado === false) {
-        alert("A planilha do Google ainda não está configurada.");
+        avisar("A planilha do Google ainda não está configurada.", "erro");
       } else if (!data.ok) {
-        alert("Sincronizado com pendências:\n" + JSON.stringify(data.falhas || {}, null, 2));
+        avisar("Sincronizado com pendências:\n" + JSON.stringify(data.falhas || {}, null, 2), "erro");
       } else if (trouxe.length > 0) {
-        alert(`Planilha sincronizada. Trouxe ${trouxe.join(" e ")}.${aviso}`);
+        avisar(`Planilha sincronizada. Trouxe ${trouxe.join(" e ")}.${pendencias}`);
       } else {
-        alert(`Planilha sincronizada. Nada novo vindo dela.${aviso}`);
+        avisar(`Planilha sincronizada. Nada novo vindo dela.${pendencias}`);
       }
     } catch (e) {
       console.error(e);
-      alert("Não consegui sincronizar com a planilha agora.");
+      avisar("Não consegui sincronizar com a planilha agora.", "erro");
     } finally {
       setSincronizando(false);
     }
@@ -1022,17 +1061,17 @@ export default function Home() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: CORES.fundo, fontFamily: "'Helvetica Neue', Arial, sans-serif", color: CORES.tinta, paddingBottom: 100 }}>
+    <div style={{ minHeight: "100vh", background: CORES.fundo, color: CORES.tinta, paddingBottom: 96 }}>
       <div style={{ background: CORES.escura, padding: "20px 20px 24px", position: "relative" }}>
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${CORES.principal}, ${CORES.acento})` }} />
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <img src="/logo-mark.png" alt={EQUIPE} style={{ height: 40, width: "auto", objectFit: "contain", flexShrink: 0 }} />
           <div>
-            <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 11, letterSpacing: "0.15em", color: CORES.acento, textTransform: "uppercase", marginBottom: 4 }}>
+            <div style={{ fontSize: TEXTO.miudo, letterSpacing: "0.15em", color: CORES.acento, textTransform: "uppercase", marginBottom: 4 }}>
               {EQUIPE}
             </div>
-            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 400, color: CORES.sobreEscura }}>{TITULO}</h1>
-            <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.acento, marginTop: 4 }}>
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 400, color: CORES.sobreEscura }}>{TITULO}</h1>
+            <div style={{ fontSize: TEXTO.apoio, color: CORES.acento, marginTop: 4 }}>
               {loaded ? `${entries.length} registro${entries.length === 1 ? "" : "s"} · compartilhado` : "carregando…"}
             </div>
           </div>
@@ -1050,26 +1089,11 @@ export default function Home() {
               background: CORES.alertaFundo,
               color: CORES.alerta,
               borderRadius: 8,
-              fontFamily: "Helvetica, Arial, sans-serif",
-              fontSize: 13,
+              fontSize: TEXTO.apoio,
             }}
           >
             ⚠ Não consegui carregar os registros ({falhaDeCarga}). A lista abaixo
             não reflete o que está gravado — confira antes de lançar.
-          </div>
-        )}
-
-        {status === "idle" && (
-          <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "white", border: `1px solid ${CORES.borda}`, borderRadius: 8, padding: 4 }}>
-            <button onClick={() => setActiveTab("novo")} style={activeTab === "novo" ? tabBtnActive : tabBtn}>
-              Novo
-            </button>
-            <button onClick={() => setActiveTab("procedimentos")} style={activeTab === "procedimentos" ? tabBtnActive : tabBtn}>
-              Procedimentos
-            </button>
-            <button onClick={() => setActiveTab("cadastros")} style={activeTab === "cadastros" ? tabBtnActive : tabBtn}>
-              Cadastros
-            </button>
           </div>
         )}
 
@@ -1113,8 +1137,7 @@ export default function Home() {
               <div
                 style={{
                   marginTop: -10,
-                  fontFamily: "Helvetica, Arial, sans-serif",
-                  fontSize: 13,
+                  fontSize: TEXTO.apoio,
                   color: CORES.suave,
                 }}
               >
@@ -1190,7 +1213,7 @@ export default function Home() {
         )}
 
         {status === "extracting" && (
-          <div style={{ padding: 24, borderRadius: 8, border: `1px solid ${CORES.principal}`, background: CORES.clara, textAlign: "center", fontFamily: "Helvetica, Arial, sans-serif", fontSize: 14 }}>
+          <div style={{ padding: 24, borderRadius: 8, border: `1px solid ${CORES.principal}`, background: CORES.clara, textAlign: "center", fontSize: TEXTO.apoio }}>
             Lendo a guia…
           </div>
         )}
@@ -1201,12 +1224,12 @@ export default function Home() {
 
         {status === "mapa" && mapa && (
           <div style={{ border: `1px solid ${CORES.borda}`, borderRadius: 8, background: "white", overflow: "hidden" }}>
-            <div style={{ background: CORES.clara, padding: "12px 16px", borderBottom: `1px solid ${CORES.borda}`, fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, fontWeight: 600 }}>
+            <div style={{ background: CORES.clara, padding: "12px 16px", borderBottom: `1px solid ${CORES.borda}`, fontSize: TEXTO.apoio, fontWeight: 600 }}>
               Mapa de {localAtivo} — {mapa.linhas.length} paciente(s)
             </div>
 
             {errorMsg && (
-              <div style={{ padding: "12px 16px", fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.avisoTinta, background: CORES.avisoFundo, borderBottom: `1px solid ${CORES.borda}` }}>
+              <div style={{ padding: "12px 16px", fontSize: TEXTO.apoio, color: CORES.avisoTinta, background: CORES.avisoFundo, borderBottom: `1px solid ${CORES.borda}` }}>
                 {errorMsg}
               </div>
             )}
@@ -1253,7 +1276,7 @@ export default function Home() {
                       style={{ width: 18, height: 18, flexShrink: 0 }}
                     />
                     <input
-                      style={{ ...inputStyle, fontSize: 14 }}
+                      style={{ ...inputStyle, fontSize: TEXTO.apoio }}
                       type="text"
                       value={l.paciente}
                       onChange={(ev) => atualizarLinha(i, { paciente: ev.target.value.toUpperCase() })}
@@ -1261,7 +1284,7 @@ export default function Home() {
                   </div>
                   <div style={{ paddingLeft: 28, marginTop: 4 }}>
                     <input
-                      style={{ ...inputStyle, fontSize: 13 }}
+                      style={{ ...inputStyle, fontSize: TEXTO.apoio }}
                       type="text"
                       value={(l.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS)}
                       onChange={(ev) =>
@@ -1274,7 +1297,7 @@ export default function Home() {
                       }
                       placeholder="Procedimento"
                     />
-                    <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 11, color: CORES.suave, marginTop: 4 }}>
+                    <div style={{ fontSize: TEXTO.miudo, color: CORES.suave, marginTop: 4 }}>
                       {[l.hora, l.convenio, l.cirurgiao ? `Dr(a). ${l.cirurgiao}` : "", l.nGuia ? `Guia ${l.nGuia}` : ""]
                         .filter(Boolean)
                         .join(" · ")}
@@ -1314,12 +1337,12 @@ export default function Home() {
 
         {status === "review" && (
           <div style={{ border: `1px solid ${CORES.borda}`, borderRadius: 8, background: "white", overflow: "hidden" }}>
-            <div style={{ background: CORES.clara, padding: "12px 16px", borderBottom: `1px solid ${CORES.borda}`, fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, fontWeight: 600 }}>
+            <div style={{ background: CORES.clara, padding: "12px 16px", borderBottom: `1px solid ${CORES.borda}`, fontSize: TEXTO.apoio, fontWeight: 600 }}>
               {editingId ? "Editar registro" : imagePreview ? "Confira os dados lidos da guia" : "Novo registro manual"}
             </div>
 
             {errorMsg && (
-              <div style={{ padding: "12px 16px", fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.avisoTinta, background: CORES.avisoFundo, borderBottom: `1px solid ${CORES.borda}` }}>
+              <div style={{ padding: "12px 16px", fontSize: TEXTO.apoio, color: CORES.avisoTinta, background: CORES.avisoFundo, borderBottom: `1px solid ${CORES.borda}` }}>
                 {errorMsg}
               </div>
             )}
@@ -1385,7 +1408,7 @@ export default function Home() {
                 if (f.escolha) {
                   return (
                     <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>
+                      <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
                         {f.appLabel || f.label}
                       </span>
                       <Escolha
@@ -1431,7 +1454,7 @@ export default function Home() {
                         />
                       </Field>
                       {duracao && (
-                        <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave, marginTop: 4 }}>
+                        <div style={{ fontSize: TEXTO.miudo, color: CORES.suave, marginTop: 4 }}>
                           Duração: {duracao}
                         </div>
                       )}
@@ -1509,8 +1532,7 @@ export default function Home() {
                       <div
                         style={{
                           marginTop: 6,
-                          fontFamily: "Helvetica, Arial, sans-serif",
-                          fontSize: 12,
+                          fontSize: TEXTO.miudo,
                           color:
                             avisoDaGuia.estado === "valida" || avisoDaGuia.estado === "completada" ? CORES.principal : CORES.alerta,
                         }}
@@ -1527,11 +1549,11 @@ export default function Home() {
                   anestesista desmarca o que não se aplica. Só os marcados são
                   gravados, na mesma célula da planilha. */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>
+                <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
                   Procedimentos solicitados na guia
                 </span>
                 {(draft.procedimentos || []).length === 0 && (
-                  <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.tenue }}>
+                  <div style={{ fontSize: TEXTO.apoio, color: CORES.tenue }}>
                     Nenhum procedimento lido da guia. Use o botão abaixo para acrescentar.
                   </div>
                 )}
@@ -1561,7 +1583,7 @@ export default function Home() {
                     </button>
                   </div>
                 ))}
-                <button type="button" onClick={addProcedimento} style={{ ...btnSecondary, padding: "10px 12px", fontSize: 14 }}>
+                <button type="button" onClick={addProcedimento} style={{ ...btnSecondary, padding: "10px 12px", fontSize: TEXTO.apoio }}>
                   + Acrescentar procedimento
                 </button>
               </div>
@@ -1584,7 +1606,7 @@ export default function Home() {
               })}
 
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>Executado</span>
+                <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>Executado</span>
                 <Escolha
                   campo="executado"
                   valor={draft.executado}
@@ -1597,7 +1619,7 @@ export default function Home() {
                   conferência da Unimed ele é acompanhado. */}
               {modeloDoRegistro(draft) === "convenio" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>
+                  <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
                     PC Executado
                   </span>
                   <Escolha
@@ -1614,14 +1636,14 @@ export default function Home() {
                   lista de dez caixas sem destino. */}
               {!ehParticular(draft) && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>Procedimento Complementar</span>
+                <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>Procedimento Complementar</span>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {PROCEDIMENTOS_COMPLEMENTARES.map((item) => {
                     const marcado = complementarMarcado(draft.procedimentoComplementar, item);
                     const limite = LIMITE_DE_HORAS[codigoDo(item)];
                     return (
                       <div key={item} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontFamily: "Helvetica, Arial, sans-serif", fontSize: 14 }}>
+                        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: TEXTO.apoio }}>
                           <input
                             type="checkbox"
                             checked={!!marcado}
@@ -1633,7 +1655,7 @@ export default function Home() {
 
                         {limite && marcado && (
                           <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24 }}>
-                            <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.suave }}>
+                            <span style={{ fontSize: TEXTO.apoio, color: CORES.suave }}>
                               Quantas horas?
                             </span>
                             <select
@@ -1657,8 +1679,7 @@ export default function Home() {
                   <div
                     className="aviso-guia-complementar"
                     style={{
-                      fontFamily: "Helvetica, Arial, sans-serif",
-                      fontSize: 13,
+                      fontSize: TEXTO.apoio,
                       fontWeight: 700,
                       color: CORES.alerta,
                       textAlign: "center",
@@ -1721,12 +1742,31 @@ export default function Home() {
 
         {status === "idle" && activeTab === "procedimentos" && entries.length > 0 && (
           <div>
+            {/* Busca, filtros e seletor de mês grudam no topo.
+                
+                A lista de um mês cheio passa de uma tela de rolagem, e quem
+                percorre procurando um paciente perdia de vista o que estava
+                filtrando — e rolava de volta para conferir. O fundo opaco é
+                necessário: sem ele, os cartões passam por baixo e se leem
+                através. */}
+            <div
+              style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 20,
+                background: CORES.fundo,
+                paddingTop: ESPACO[2],
+                marginTop: -ESPACO[2],
+                borderBottom: `1px solid ${CORES.bordaSuave}`,
+                marginBottom: ESPACO[3],
+              }}
+            >
             <input
               style={{ ...inputStyle, marginBottom: 12 }}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="🔎 Buscar por paciente, data, mês, procedimento, cirurgião ou anestesista"
+              placeholder="🔎 Buscar por paciente, data, mês, procedimento, cirurgião ou anestesiologista"
             />
 
             {/* Durante a busca o seletor fica esmaecido e sem efeito,
@@ -1743,8 +1783,7 @@ export default function Home() {
                 style={{
                   ...inputStyle,
                   marginBottom: 10,
-                  fontFamily: "Helvetica, Arial, sans-serif",
-                  fontSize: 13,
+                  fontSize: TEXTO.apoio,
                   fontWeight: 600,
                   color: localFiltro === TODOS_OS_LOCAIS ? CORES.suave : CORES.escura,
                   background: localFiltro === TODOS_OS_LOCAIS ? "white" : CORES.clara,
@@ -1771,8 +1810,7 @@ export default function Home() {
                 style={{
                   ...inputStyle,
                   marginBottom: 10,
-                  fontFamily: "Helvetica, Arial, sans-serif",
-                  fontSize: 13,
+                  fontSize: TEXTO.apoio,
                   fontWeight: 600,
                   color: convenioFiltro === TODOS_OS_CONVENIOS ? CORES.suave : corDoConvenio(convenioFiltro) || CORES.escura,
                   background: convenioFiltro === TODOS_OS_CONVENIOS ? "white" : CORES.clara,
@@ -1797,17 +1835,18 @@ export default function Home() {
                 desabilitado={buscando}
               />
             )}
+            </div>
 
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10, gap: 8 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: CORES.suave }}>
+                <div style={{ fontSize: TEXTO.miudo, letterSpacing: "0.1em", textTransform: "uppercase", color: CORES.suave }}>
                   {buscando
                     ? "Resultados da busca"
                     : mesSelecionado === TODOS_OS_MESES || !mesSelecionado
                     ? "Todos os registros"
                     : nomeDoMes(mesSelecionado, true)}
                 </div>
-                <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.tenue, marginTop: 2 }}>
+                <div style={{ fontSize: TEXTO.miudo, color: CORES.tenue, marginTop: 2 }}>
                   {resumo.total} {resumo.total === 1 ? "registro" : "registros"}
                   {` · ${resumo.executados} executado${resumo.executados === 1 ? "" : "s"}`}
                 </div>
@@ -1829,7 +1868,7 @@ export default function Home() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {registrosVisiveis.length === 0 && (
-                <div style={{ textAlign: "center", fontFamily: "Helvetica, Arial, sans-serif", fontSize: 14, color: CORES.tenue, padding: "24px 0" }}>
+                <div style={{ textAlign: "center", fontSize: TEXTO.apoio, color: CORES.tenue, padding: "24px 0" }}>
                   Nenhum registro encontrado para essa busca.
                 </div>
               )}
@@ -1841,14 +1880,19 @@ export default function Home() {
                   key={e.id}
                   style={{
                     border: `1px solid ${CORES.borda}`,
+                    // A cor do convênio é uma faixa na lateral, e não o nome do
+                    // paciente pintado. Pintar o nome custava legibilidade —
+                    // laranja em corpo de 16px cansa a leitura —, e a faixa
+                    // reconhece igual de rápido sem atrapalhar o que se lê.
+                    borderLeft: `4px solid ${corDoConvenio(e.convenio) || CORES.borda}`,
                     borderRadius: 6,
                     // Cartão conferido fica cinza: é o que faz o que ainda falta
                     // conferir saltar da lista, sem precisar contar nada.
                     background: e.conferido === true ? CORES.conferido : "white",
-                    padding: "12px 14px",
+                    padding: `${ESPACO[3]}px ${ESPACO[4]}px`,
                     display: "flex",
                     flexDirection: "column",
-                    gap: 8,
+                    gap: ESPACO[2],
                   }}
                 >
                   {/* Fechado, o cartão mostra só o nome: a lista existe para
@@ -1871,11 +1915,26 @@ export default function Home() {
                       style={{ width: 20, height: 20, flexShrink: 0, cursor: "pointer", accentColor: CORES.principal }}
                     />
 
-                    {/* A cor do convênio no nome: é o que deixa reconhecer de
-                        relance para qual planilha o paciente vai — verde
-                        Unimed, azul particular, laranja os demais. */}
-                    <div style={{ fontSize: 16, lineHeight: 1.35, color: corDoConvenio(e.convenio) || CORES.tinta, minWidth: 0, flex: 1 }}>
-                      {e.paciente || "(sem nome)"}
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: TEXTO.corpo, lineHeight: 1.3 }}>
+                        {e.paciente || "(sem nome)"}
+                      </div>
+                      {/* O convênio em etiqueta, na cor da faixa: diz para qual
+                          das três planilhas o paciente vai, sem precisar abrir
+                          o cartão nem ler o nome inteiro. */}
+                      {e.convenio && (
+                        <div
+                          style={{
+                            marginTop: 2,
+                            fontSize: TEXTO.miudo,
+                            fontWeight: 600,
+                            letterSpacing: "0.04em",
+                            color: corDoConvenio(e.convenio) || CORES.suave,
+                          }}
+                        >
+                          {e.convenio}
+                        </div>
+                      )}
                     </div>
 
                     {/* O executado continua visível de fora: é o estado que se
@@ -1883,17 +1942,17 @@ export default function Home() {
                         para vê-lo desfaria a serventia de fechar. */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                       {estadoDe("executado", e.executado) === "sim" && (
-                        <span style={{ color: CORES.principal, fontSize: 14, fontWeight: 700 }}>✓</span>
+                        <span style={{ color: CORES.principal, fontSize: TEXTO.apoio, fontWeight: 700 }}>✓</span>
                       )}
                       {/* O incompleto precisa de marca própria: sem ela, de fora
                           ele se confunde com o que não foi feito, que é o
                           contrário do motivo de o estado existir. */}
                       {estadoDe("executado", e.executado) === "incompleto" && (
-                        <span style={{ color: CORES.avisoTinta, fontSize: 11, fontWeight: 700 }}>
+                        <span style={{ color: CORES.avisoTinta, fontSize: TEXTO.miudo, fontWeight: 700 }}>
                           INCOMPLETO
                         </span>
                       )}
-                      <span style={{ color: CORES.tenue, fontSize: 11 }}>{aberto ? "▲" : "▼"}</span>
+                      <span style={{ color: CORES.tenue, fontSize: TEXTO.miudo }}>{aberto ? "▲" : "▼"}</span>
                     </div>
                   </div>
 
@@ -1901,7 +1960,7 @@ export default function Home() {
                     <>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>
+                          <div style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
                             {formatarData(e.dataCirurgia)}
                             {horaDoRegistro(e) ? ` · ${horaDoRegistro(e)}` : ""}
                             {e.cirurgiao ? ` · Dr(a). ${e.cirurgiao}` : ""}
@@ -1909,7 +1968,7 @@ export default function Home() {
                           </div>
                           <LinhaDeIdentificacao entry={e} />
                           {(e.procedimentoComplementar || []).length > 0 && (
-                            <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 11, color: CORES.principal, marginTop: 4 }}>
+                            <div style={{ fontSize: TEXTO.miudo, color: CORES.principal, marginTop: 4 }}>
                               {e.procedimentoComplementar.join(" · ")}
                             </div>
                           )}
@@ -1922,7 +1981,7 @@ export default function Home() {
                       </div>
 
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, borderTop: `1px solid ${CORES.bordaSuave}` }}>
-                        <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, flex: 1, paddingRight: 8 }}>
+                        <div style={{ fontSize: TEXTO.apoio, flex: 1, paddingRight: 8 }}>
                           {(e.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS) || "(sem procedimento)"}
                         </div>
                         <Escolha
@@ -1941,7 +2000,7 @@ export default function Home() {
         )}
 
         {status === "idle" && activeTab === "procedimentos" && loaded && entries.length === 0 && (
-          <div style={{ marginTop: 32, textAlign: "center", fontFamily: "Helvetica, Arial, sans-serif", fontSize: 14, color: CORES.tenue }}>
+          <div style={{ marginTop: 32, textAlign: "center", fontSize: TEXTO.apoio, color: CORES.tenue }}>
             Nenhum registro ainda. Fotografe a primeira guia para começar.
           </div>
         )}
@@ -2001,7 +2060,7 @@ export default function Home() {
             style={{ background: "white", borderRadius: "12px 12px 0 0", width: "100%", maxWidth: 640, maxHeight: "85vh", overflowY: "auto" }}
           >
             <div style={{ background: CORES.clara, padding: "12px 16px", borderBottom: `1px solid ${CORES.borda}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, fontWeight: 600 }}>Detalhes do registro</span>
+              <span style={{ fontSize: TEXTO.apoio, fontWeight: 600 }}>Detalhes do registro</span>
               <button onClick={() => setViewingEntry(null)} style={iconBtn}>✕</button>
             </div>
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -2056,9 +2115,140 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {aviso && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            left: ESPACO[3],
+            right: ESPACO[3],
+            // Acima da barra de abas, nunca por cima dela.
+            bottom: `calc(${ALVO + ESPACO[2] + ESPACO[3]}px + env(safe-area-inset-bottom))`,
+            zIndex: 60,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: ESPACO[3],
+            maxWidth: 640,
+            margin: "0 auto",
+            padding: `${ESPACO[3]}px ${ESPACO[4]}px`,
+            borderRadius: 10,
+            background: aviso.tipo === "erro" ? CORES.alertaFundo : CORES.escura,
+            color: aviso.tipo === "erro" ? CORES.alerta : CORES.sobreEscura,
+            border: `1px solid ${aviso.tipo === "erro" ? CORES.alerta : CORES.escura}`,
+            boxShadow: "0 6px 24px rgba(26,26,26,0.18)",
+            fontSize: TEXTO.apoio,
+            lineHeight: 1.45,
+            // Relatório pode ser longo: rola dentro do próprio aviso em vez de
+            // cobrir a tela inteira.
+            maxHeight: "45vh",
+            overflowY: "auto",
+            animation: "aviso-entra 160ms ease-out",
+          }}
+        >
+          <div style={{ whiteSpace: "pre-wrap", flex: 1, minWidth: 0 }}>{aviso.texto}</div>
+          {aviso.fixo && (
+            <button
+              onClick={() => setAviso(null)}
+              aria-label="Fechar aviso"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                flexShrink: 0,
+                fontSize: 16,
+                lineHeight: 1,
+                color: "inherit",
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* As abas ficam embaixo, e não no topo.
+          
+          Num celular usado em pé, no centro cirúrgico, o polegar não alcança o
+          topo da tela sem trocar a mão de posição. É a mudança de uso mais
+          barata do app, e a que mais aparece.
+
+          Só no modo normal: durante a conferência de uma guia ou de um mapa,
+          trocar de aba jogaria fora o que está na tela. */}
+      {status === "idle" && (
+        <nav
+          style={{
+            position: "fixed",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            background: "white",
+            borderTop: `1px solid ${CORES.borda}`,
+            // O respiro da barra do iPhone, que fica por cima do conteúdo.
+            paddingBottom: "env(safe-area-inset-bottom)",
+            zIndex: 40,
+          }}
+        >
+          {ABAS.map((aba) => {
+            const ativa = activeTab === aba.chave;
+            return (
+              <button
+                key={aba.chave}
+                onClick={() => setActiveTab(aba.chave)}
+                aria-current={ativa ? "page" : undefined}
+                style={{
+                  flex: 1,
+                  minHeight: ALVO + ESPACO[2],
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 2,
+                  padding: `${ESPACO[2]}px 0`,
+                  background: "none",
+                  border: "none",
+                  borderTop: `2px solid ${ativa ? CORES.principal : "transparent"}`,
+                  color: ativa ? CORES.escura : CORES.suave,
+                  fontWeight: ativa ? 600 : 500,
+                  fontSize: TEXTO.miudo,
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ fontSize: 19, lineHeight: 1 }}>{aba.icone}</span>
+                {aba.nome}
+              </button>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }
+
+/**
+ * O mesmo botão, porém numa pilha vertical.
+ *
+ * `btnPrimary` e `btnSecondary` nascem com `flex: 1` para dividir uma fileira.
+ * Dentro de uma coluna, esse mesmo `flex` faria o botão esticar na vertical —
+ * daí a troca por `0 0 auto`.
+ */
+function btnEmpilhado(base) {
+  return { ...base, flex: "0 0 auto", width: "100%" };
+}
+
+/** O botão esmaecido enquanto não há local escolhido. */
+function semLocal(base, localAtivo) {
+  return localAtivo ? base : { ...base, opacity: 0.45, cursor: "default" };
+}
+
+/** As três abas do app, na ordem em que aparecem no rodapé. */
+const ABAS = [
+  { chave: "novo", nome: "Novo", icone: "➕" },
+  { chave: "procedimentos", nome: "Procedimentos", icone: "📋" },
+  { chave: "cadastros", nome: "Cadastros", icone: "👥" },
+];
 
 /**
  * Atendimento, guia, carteira e convênio no cartão da lista.
@@ -2081,7 +2271,7 @@ function LinhaDeIdentificacao({ entry }) {
   const cor = corDoConvenio(convenio);
 
   return (
-    <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave, marginTop: 2 }}>
+    <div style={{ fontSize: TEXTO.miudo, color: CORES.suave, marginTop: 2 }}>
       {numeros.join(" · ")}
       {numeros.length > 0 && convenio ? " · " : ""}
       {/* Só o nome do convênio muda de cor; os números continuam discretos. */}
@@ -2119,7 +2309,7 @@ function Escolha({ campo, valor, onEscolher, grande }) {
                   border: `1px solid ${estado.fundoNaTela}`,
                 }
               : null),
-            ...(grande ? { flex: 1, padding: "10px 12px", fontSize: 14 } : null),
+            ...(grande ? { flex: 1, padding: "10px 12px", fontSize: TEXTO.apoio } : null),
           }}
         >
           {estado.rotulo}
@@ -2133,8 +2323,8 @@ function ViewField({ label, value }) {
   if (!value) return null;
   return (
     <div>
-      <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>{label}</div>
-      <div style={{ fontSize: 15, marginTop: 2 }}>{value}</div>
+      <div style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>{label}</div>
+      <div style={{ fontSize: TEXTO.corpo, marginTop: 2 }}>{value}</div>
     </div>
   );
 }
@@ -2194,7 +2384,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
 
   return (
     <div>
-      <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: CORES.suave, marginBottom: 10 }}>
+      <div style={{ fontSize: TEXTO.miudo, letterSpacing: "0.1em", textTransform: "uppercase", color: CORES.suave, marginBottom: 10 }}>
         {title}
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -2216,7 +2406,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
       <div style={{ marginBottom: 12 }}>
         <button
           onClick={() => setAbrirLote((v) => !v)}
-          style={{ ...btnSecondary, width: "100%", padding: "10px 12px", fontSize: 13 }}
+          style={{ ...btnSecondary, width: "100%", padding: "10px 12px", fontSize: TEXTO.apoio }}
         >
           {abrirLote ? "▴ Fechar importação" : "▾ Colar uma lista de nomes"}
         </button>
@@ -2224,7 +2414,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
         {abrirLote && (
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
             <textarea
-              style={{ ...inputStyle, resize: "vertical", fontSize: 14 }}
+              style={{ ...inputStyle, resize: "vertical", fontSize: TEXTO.apoio }}
               rows={6}
               value={lote}
               onChange={(e) => setLote(e.target.value)}
@@ -2236,7 +2426,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
               style={{
                 ...btnPrimary,
                 padding: "12px",
-                fontSize: 14,
+                fontSize: TEXTO.apoio,
                 opacity: importando || aImportar.length === 0 ? 0.5 : 1,
               }}
             >
@@ -2247,7 +2437,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
                 : `Cadastrar ${aImportar.length} ${aImportar.length === 1 ? "nome" : "nomes"}`}
             </button>
             {resumo && (
-              <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.suave }}>
+              <div style={{ fontSize: TEXTO.apoio, color: CORES.suave }}>
                 {resumo}
               </div>
             )}
@@ -2256,7 +2446,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
       </div>
 
       {items.length === 0 ? (
-        <div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 13, color: CORES.tenue }}>Nenhum cadastrado ainda.</div>
+        <div style={{ fontSize: TEXTO.apoio, color: CORES.tenue }}>Nenhum cadastrado ainda.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {items.map((n) => (
@@ -2264,7 +2454,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
               key={n}
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${CORES.borda}`, borderRadius: 6, background: "white", padding: "8px 12px" }}
             >
-              <span style={{ fontSize: 14 }}>{n}</span>
+              <span style={{ fontSize: TEXTO.apoio }}>{n}</span>
               <button onClick={() => onRemove(n)} style={{ ...iconBtn, color: CORES.alerta }}>🗑</button>
             </div>
           ))}
@@ -2371,7 +2561,7 @@ function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, desabilita
             >
               ‹
             </button>
-            <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 14, fontWeight: 600 }}>{ano}</span>
+            <span style={{ fontSize: TEXTO.apoio, fontWeight: 600 }}>{ano}</span>
             <button
               onClick={() => setAno(anos[idxAno + 1])}
               disabled={idxAno >= anos.length - 1}
@@ -2399,13 +2589,13 @@ function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, desabilita
                     ...(selecionado === chave ? chipMesAtivo : null),
                     padding: "8px 4px",
                     borderRadius: 6,
-                    fontSize: 12,
+                    fontSize: TEXTO.miudo,
                     cursor: vazio ? "default" : "pointer",
                     color: vazio ? "#C3CEC8" : selecionado === chave ? CORES.escura : CORES.suave,
                   }}
                 >
                   {mesAbreviado(i + 1)}
-                  <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{vazio ? "—" : total}</div>
+                  <div style={{ fontSize: TEXTO.apoio, fontWeight: 700, marginTop: 2 }}>{vazio ? "—" : total}</div>
                 </button>
               );
             })}
@@ -2481,8 +2671,7 @@ function AutocompleteInput({ value, onChange, options, placeholder, invalid }) {
               }}
               style={{
                 padding: "10px 12px",
-                fontSize: 14,
-                fontFamily: "Helvetica, Arial, sans-serif",
+                fontSize: TEXTO.apoio,
                 cursor: "pointer",
                 borderBottom: `1px solid ${CORES.bordaSuave}`,
               }}
@@ -2499,173 +2688,10 @@ function AutocompleteInput({ value, onChange, options, placeholder, invalid }) {
 function Field({ label, children }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: 12, color: CORES.suave }}>{label}</span>
+      <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>{label}</span>
       {children}
     </label>
   );
 }
 
-const inputStyle = {
-  width: "100%",
-  // Sem isto, padding e borda somam à largura e o campo estoura o container.
-  boxSizing: "border-box",
-  // Item de flex nasce com `min-width: auto` e se recusa a encolher abaixo do
-  // conteúdo — é assim que um campo escapa pela lateral do cartão.
-  minWidth: 0,
-  // Teto absoluto. Os campos de data e hora são desenhados pelo sistema, que
-  // os dimensiona pelo próprio conteúdo e nem sempre respeita `width` — o do
-  // iPhone é assim. `maxWidth` vale mesmo nesse caso, e é o que garante que
-  // nenhum campo passe da borda do cartão.
-  maxWidth: "100%",
-  // Data e hora nascem `inline-block` no iOS, o que reabre a porta para a
-  // largura intrínseca mandar. Em bloco, a largura é a que se pede.
-  display: "block",
-  padding: "10px 12px",
-  border: `1px solid ${CORES.borda}`,
-  borderRadius: 4,
-  fontFamily: "Helvetica, Arial, sans-serif",
-  fontSize: 15,
-  // Altura de linha explícita para que todos os campos tenham a mesma altura.
-  // Com `normal`, cada tipo escolhe a sua: o campo de texto ficava com 39px, o
-  // de data com 41 e o de hora com 43,75 — três alturas na mesma coluna.
-  lineHeight: "20px",
-  background: "white",
-};
-
-/** O botão esmaecido enquanto não há local escolhido. */
-function semLocal(base, localAtivo) {
-  return localAtivo ? base : { ...base, opacity: 0.45, cursor: "default" };
-}
-
-/**
- * O mesmo botão, porém numa pilha vertical.
- *
- * `btnPrimary` e `btnSecondary` nascem com `flex: 1` para dividir uma fileira.
- * Dentro de uma coluna, esse mesmo `flex` faria o botão esticar na vertical —
- * daí a troca por `0 0 auto`.
- */
-function btnEmpilhado(base) {
-  return { ...base, flex: "0 0 auto", width: "100%" };
-}
-
-const btnIcone = {
-  width: 38,
-  height: 38,
-  padding: 0,
-  borderRadius: 8,
-  background: "white",
-  color: CORES.tinta,
-  border: `1px solid ${CORES.borda}`,
-  fontSize: 16,
-  lineHeight: 1,
-  cursor: "pointer",
-  flexShrink: 0,
-};
-
-const btnPrimary = {
-  flex: 1,
-  padding: "16px",
-  borderRadius: 8,
-  background: CORES.principal,
-  color: CORES.sobrePrincipal,
-  border: `1px solid ${CORES.principal}`,
-  fontFamily: "Helvetica, Arial, sans-serif",
-  fontWeight: 600,
-  fontSize: 15,
-  cursor: "pointer",
-};
-
-const btnSecondary = {
-  flex: 1,
-  padding: "16px",
-  borderRadius: 8,
-  background: "white",
-  color: CORES.tinta,
-  border: `1px solid ${CORES.borda}`,
-  fontFamily: "Helvetica, Arial, sans-serif",
-  fontWeight: 500,
-  fontSize: 15,
-  cursor: "pointer",
-};
-
-/**
- * Botão de caminho alternativo: mesma largura do principal, menos peso.
- *
- * A diferença é altura e cor, não tamanho da fonte — o alvo continua grande o
- * bastante para o dedo, que é o que importa numa tela de centro cirúrgico.
- */
-const btnDiscreto = {
-  flex: 1,
-  padding: "12px 16px",
-  borderRadius: 8,
-  background: "white",
-  color: CORES.suave,
-  border: `1px solid ${CORES.borda}`,
-  fontFamily: "Helvetica, Arial, sans-serif",
-  fontWeight: 500,
-  fontSize: 14,
-  cursor: "pointer",
-};
-
-const iconBtn = {
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  padding: 6,
-  color: CORES.suave,
-  fontSize: 16,
-};
-
-const tabBtn = {
-  flex: 1,
-  padding: "10px",
-  borderRadius: 6,
-  background: "transparent",
-  color: CORES.suave,
-  border: "none",
-  fontFamily: "Helvetica, Arial, sans-serif",
-  fontWeight: 600,
-  fontSize: 14,
-  cursor: "pointer",
-};
-
-const tabBtnActive = {
-  ...tabBtn,
-  background: CORES.clara,
-  color: CORES.escura,
-};
-
-// Chips do seletor de mês: mesma linguagem visual das abas, porém compactos e
-// sem `flex: 1`, para caberem numa fileira que rola na horizontal.
-const chipMes = {
-  padding: "7px 12px",
-  borderRadius: 16,
-  background: "white",
-  color: CORES.suave,
-  border: `1px solid ${CORES.borda}`,
-  fontFamily: "Helvetica, Arial, sans-serif",
-  fontWeight: 600,
-  fontSize: 13,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-  flexShrink: 0,
-};
-
-const chipMesAtivo = {
-  background: CORES.clara,
-  color: CORES.escura,
-  border: `1px solid ${CORES.principal}`,
-};
-
-const execBtn = {
-  padding: "6px 12px",
-  borderRadius: 6,
-  background: "white",
-  color: CORES.suave,
-  border: `1px solid ${CORES.borda}`,
-  fontFamily: "Helvetica, Arial, sans-serif",
-  fontWeight: 600,
-  fontSize: 12,
-  cursor: "pointer",
-};
 

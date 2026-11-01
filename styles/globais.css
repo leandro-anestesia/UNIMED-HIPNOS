@@ -2,8 +2,75 @@
  * Regras globais.
  *
  * O app é estilizado em linha, campo a campo. Este arquivo existe para o que
- * estilo em linha não alcança: pseudo-elementos e a aparência nativa.
+ * estilo em linha não alcança — pseudo-elementos, aparência nativa — e para o
+ * que não deve ser repetido campo a campo: a fonte e as medidas.
  */
+
+/*
+ * Uma fonte só, declarada uma vez.
+ *
+ * Antes `fontFamily` aparecia quarenta e sete vezes em rótulos e botões, e o
+ * texto grande — nome do paciente, procedimentos — não tinha nenhuma, caindo
+ * no padrão do navegador. No iPhone davam duas famílias na mesma tela.
+ *
+ * A pilha do sistema, e não uma fonte baixada: é a que o aparelho já tem (San
+ * Francisco no iPhone, Roboto no Android), aparece na primeira pintura e não
+ * custa um download numa rede de hospital.
+ */
+:root {
+  --fonte: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+
+  /*
+   * A escala de texto. Quatro tamanhos, e não os oito que havia — 9, 11, 12,
+   * 13, 14, 15, 16, 20 em passos arbitrários não se distinguem, só desalinham.
+   *
+   * miudo   etiquetas, contagens, estado vazio
+   * apoio   rótulos de campo, metadados do cartão
+   * corpo   o que se lê: campos, botões, procedimentos
+   * nome    nome do paciente, título de seção
+   */
+  --texto-miudo: 11px;
+  --texto-apoio: 13px;
+  --texto-corpo: 15px;
+  --texto-nome: 20px;
+
+  /* A escala de espaço, em múltiplos de 4. */
+  --espaco-1: 4px;
+  --espaco-2: 8px;
+  --espaco-3: 12px;
+  --espaco-4: 16px;
+  --espaco-6: 24px;
+
+  /*
+   * O alvo mínimo do dedo. 44px é a medida que a Apple e o Google recomendam,
+   * e a que faz diferença numa tela usada em pé, de luva, com pressa.
+   */
+  --alvo: 44px;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--fonte);
+  /*
+   * O iOS aumenta o corpo de texto sozinho ao girar a tela. Num formulário
+   * longo isso reposiciona tudo no meio da digitação.
+   */
+  -webkit-text-size-adjust: 100%;
+}
+
+/*
+ * Campo e botão não herdam a fonte do documento — é regra antiga do HTML, e é
+ * por isso que `fontFamily` estava repetido em cada um deles.
+ */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
 
 /*
  * Data e hora, para que fiquem iguais às caixas de texto ao lado.
@@ -47,4 +114,29 @@ input[type="time"]::-webkit-date-and-time-value {
   min-width: 0;
   width: 100%;
   margin: 0;
+}
+
+/*
+ * O aviso que desliza do rodapé, no lugar do `alert()`.
+ *
+ * `alert()` trava a tela, exige um toque para sumir e tem cara de erro de
+ * sistema — num app de centro cirúrgico, parece que algo quebrou. Isto aparece,
+ * é lido e some sozinho.
+ */
+@keyframes aviso-entra {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
