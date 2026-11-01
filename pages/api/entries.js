@@ -11,7 +11,10 @@ import {
   apagar,
   atualizar,
   gravarTudo,
+  lerAno,
+  lerMes,
   lerTudo,
+  mesesComRegistro,
 } from "../../lib/registros";
 
 /**
@@ -182,6 +185,14 @@ async function lancarLote(brutos, res) {
 export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
+      // `?mes=2026-11` e `?ano=2026` existem para a área da secretária, que
+      // trabalha um mês de cada vez: sem eles ela baixaria o controle inteiro a
+      // cada troca de filtro. Sem parâmetro, devolve tudo — é o que o app do
+      // anestesiologista usa, e ele precisa da busca em todos os meses.
+      const { mes, ano, meses } = req.query;
+      if (meses !== undefined) return res.status(200).json(await mesesComRegistro());
+      if (mes) return res.status(200).json(await lerMes(mes));
+      if (ano) return res.status(200).json(await lerAno(ano));
       return res.status(200).json(await lerTudo());
     }
 

@@ -2046,6 +2046,28 @@ export default function Home() {
               onImportar={(nomes) => importarCadastros("recebedores", nomes)}
               onRemove={(nome) => removeCadastro("recebedores", nome)}
             />
+
+            {/* A área de conferência é tela de computador, e não entra na barra
+                de abas do celular — ela atrapalharia quem lança. Fica aqui, no
+                fim dos ajustes, que é onde quem administra já vem. */}
+            <a
+              href="/secretaria"
+              style={{
+                display: "block",
+                textAlign: "center",
+                padding: ESPACO[3],
+                marginTop: ESPACO[2],
+                borderRadius: 8,
+                border: `1px solid ${CORES.borda}`,
+                background: "white",
+                color: CORES.suave,
+                textDecoration: "none",
+                fontSize: TEXTO.apoio,
+                fontWeight: 500,
+              }}
+            >
+              📊 Área de conferência
+            </a>
           </div>
         )}
       </div>
