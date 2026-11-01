@@ -5,9 +5,14 @@ import { sheetsEnabled, syncAno, pullDaPlanilha } from "../../lib/sheets";
 import { normalizarTexto } from "../../lib/texto";
 import { SEPARADOR_PROCEDIMENTOS } from "../../lib/campos";
 import { normalizarRegistro } from "../../lib/registro";
-import { comTrava } from "../../lib/trava";
-
-const KEY = "guias:entries";
+import {
+  acrescentar,
+  acrescentarVarios,
+  apagar,
+  atualizar,
+  gravarTudo,
+  lerTudo,
+} from "../../lib/registros";
 
 /**
  * Espelha no Google Sheets os anos afetados por uma alteração.
@@ -26,7 +31,7 @@ async function espelharNoSheets(entries, anos, idsDoApp = []) {
     const { entries: mesclados, mudancas } = await pullDaPlanilha(entries, idsDoApp);
     if (mudancas.length > 0) {
       atuais = mesclados;
-      await kv.set(KEY, atuais);
+      await gravarTudo(atuais);
     }
   } catch (err) {
     console.error("Falha ao ler alterações da planilha:", err.message);
@@ -49,21 +54,6 @@ async function espelharNoSheets(entries, anos, idsDoApp = []) {
 
 const TRAVA = "guias:sync:trava";
 const PENDENTE = "guias:sync:pendente";
-const TRAVA_ENTRIES = "guias:entries:trava";
-
-/**
- * Serializa o ciclo ler-modificar-gravar dos registros.
- *
- * A lista inteira vive numa única chave do Redis. Sem trava, duas gravações
- * simultâneas leem a mesma lista e a última sobrescreve a outra — some um
- * paciente. Com dois anestesistas lançando ao mesmo tempo isso é real.
- *
- * Se a trava não vier em ~5s, segue sem ela: é melhor arriscar a concorrência
- * do que recusar o registro de um paciente.
- */
-function comTravaDeEntries(fn) {
-  return comTrava(TRAVA_ENTRIES, fn);
-}
 
 /**
  * Manda espelhar na planilha DEPOIS de responder ao app.
@@ -97,8 +87,7 @@ function espelharDepoisDeResponder(anos, idsDoApp = []) {
       try {
         while (await kv.get(PENDENTE)) {
           await kv.del(PENDENTE);
-          const atuais = (await kv.get(KEY)) || [];
-          await espelharNoSheets(atuais, anos, idsDoApp);
+          await espelharNoSheets(await lerTudo(), anos, idsDoApp);
         }
       } finally {
         await kv.del(TRAVA);
@@ -111,8 +100,7 @@ function espelharDepoisDeResponder(anos, idsDoApp = []) {
         if (deNovo) {
           try {
             await kv.del(PENDENTE);
-            const atuais = (await kv.get(KEY)) || [];
-            await espelharNoSheets(atuais, anos, idsDoApp);
+            await espelharNoSheets(await lerTudo(), anos, idsDoApp);
           } finally {
             await kv.del(TRAVA);
           }
@@ -179,25 +167,7 @@ async function lancarLote(brutos, res) {
     normalizarRegistro({ ...dados, id: randomUUID(), criadoEm: new Date().toISOString() })
   );
 
-  const { gravados, duplicados } = await comTravaDeEntries(async () => {
-    const entries = (await kv.get(KEY)) || [];
-    const gravados = [];
-    const duplicados = [];
-
-    for (const entry of novos) {
-      // Compara contra a lista que vai crescendo: pega também o mapa que traz o
-      // mesmo paciente duas vezes.
-      if (acharDuplicata(entries, entry)) {
-        duplicados.push(entry.paciente);
-        continue;
-      }
-      entries.unshift(entry);
-      gravados.push(entry);
-    }
-
-    if (gravados.length > 0) await kv.set(KEY, entries);
-    return { gravados, duplicados };
-  });
+  const { gravados, duplicados } = await acrescentarVarios(novos, acharDuplicata);
 
   if (gravados.length > 0) {
     espelharDepoisDeResponder(
@@ -212,8 +182,7 @@ async function lancarLote(brutos, res) {
 export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
-      const entries = (await kv.get(KEY)) || [];
-      return res.status(200).json(entries);
+      return res.status(200).json(await lerTudo());
     }
 
     if (req.method === "POST") {
@@ -225,18 +194,10 @@ export default async function handler(req, res) {
       const { confirmarDuplicado, ...dados } = req.body || {};
       const entry = normalizarRegistro({ ...dados, id: randomUUID(), criadoEm: new Date().toISOString() });
 
-      const duplicada = await comTravaDeEntries(async () => {
-        const entries = (await kv.get(KEY)) || [];
-
-        if (confirmarDuplicado !== true) {
-          const existente = acharDuplicata(entries, entry);
-          if (existente) return existente;
-        }
-
-        entries.unshift(entry);
-        await kv.set(KEY, entries);
-        return null;
-      });
+      const { duplicada } = await acrescentar(
+        entry,
+        confirmarDuplicado === true ? null : acharDuplicata
+      );
 
       if (duplicada) return res.status(409).json({ duplicado: true, existente: duplicada });
 
@@ -248,15 +209,7 @@ export default async function handler(req, res) {
       const updated = normalizarRegistro(req.body || {});
       if (!updated || !updated.id) return res.status(400).json({ error: "id é obrigatório" });
 
-      const anterior = await comTravaDeEntries(async () => {
-        const entries = (await kv.get(KEY)) || [];
-        const antes = entries.find((e) => e.id === updated.id);
-        const next = entries.map((e) =>
-          e.id === updated.id ? { ...updated, criadoEm: e.criadoEm || updated.criadoEm } : e
-        );
-        await kv.set(KEY, next);
-        return antes;
-      });
+      const anterior = await atualizar(updated);
 
       espelharDepoisDeResponder([anoDe(anterior), anoDe(updated)], [updated.id]);
       return res.status(200).json(updated);
@@ -266,12 +219,7 @@ export default async function handler(req, res) {
       const { id } = req.query;
       if (!id) return res.status(400).json({ error: "id é obrigatório" });
 
-      const removido = await comTravaDeEntries(async () => {
-        const entries = (await kv.get(KEY)) || [];
-        const alvo = entries.find((e) => e.id === id);
-        await kv.set(KEY, entries.filter((e) => e.id !== id));
-        return alvo;
-      });
+      const removido = await apagar(id);
 
       espelharDepoisDeResponder([anoDe(removido)]);
       return res.status(200).json({ ok: true });

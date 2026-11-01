@@ -1,9 +1,7 @@
-import { kv } from "../../lib/kv";
 import { sheetsEnabled, syncTudo, pullDaPlanilha } from "../../lib/sheets";
 import { normalizarRegistro, mudouNaNormalizacao } from "../../lib/registro";
 import { rotuloDaFalha } from "../../lib/modelos";
-
-const KEY = "guias:entries";
+import { gravarTudo, lerTudo } from "../../lib/registros";
 
 export default async function handler(req, res) {
   if (req.method !== "POST" && req.method !== "GET") {
@@ -20,7 +18,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    let entries = (await kv.get(KEY)) || [];
+    let entries = await lerTudo();
 
     const normalizados = entries.map(normalizarRegistro);
     const guiasCompletadas = normalizados
@@ -31,7 +29,7 @@ export default async function handler(req, res) {
 
     if (normalizados.some((e, i) => mudouNaNormalizacao(entries[i], e))) {
       entries = normalizados;
-      await kv.set(KEY, entries);
+      await gravarTudo(entries);
     }
 
     // Primeiro traz o que foi editado direto na planilha, depois reescreve.
@@ -43,7 +41,7 @@ export default async function handler(req, res) {
       if (resultado.mudancas.length > 0) {
         entries = resultado.entries;
         mudancas = resultado.mudancas;
-        await kv.set(KEY, entries);
+        await gravarTudo(entries);
       }
     } catch (err) {
       console.error("Falha ao ler alterações da planilha:", err.message);
@@ -57,7 +55,7 @@ export default async function handler(req, res) {
       importadosDaPlanilha: mudancas,
       recusadas,
       guiasCompletadas,
-      // Um ano pode ter várias planilhas: convênio, particular e uma por clínica.
+      // Um ano tem três planilhas: Unimed, outros convênios e particular.
       planilhas: Object.fromEntries(
         Object.entries(sincronizados).flatMap(([ano, porModelo]) =>
           Object.entries(porModelo).map(([modelo, id]) => [
