@@ -284,6 +284,10 @@ export default function Home() {
   const [entries, setEntries] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [status, setStatus] = useState("idle"); // idle | extracting | review
+  // Qual leitura está em curso. O aviso de espera dizia "Lendo a guia…" nos
+  // dois casos, porque `status` só sabe que está lendo, não o quê: quem
+  // fotografava o mapa da clínica lia que o app estava lendo uma guia.
+  const [lendo, setLendo] = useState("guia"); // guia | mapa
   const [activeTab, setActiveTab] = useState("novo"); // novo | procedimentos | cadastros
   const [viewingEntry, setViewingEntry] = useState(null);
   const [cadastros, setCadastros] = useState(CADASTROS_VAZIOS);
@@ -494,6 +498,7 @@ export default function Home() {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     setErrorMsg("");
+    setLendo("mapa");
     setStatus("extracting");
     try {
       const base64 = await fileToResizedBase64(file);
@@ -636,6 +641,7 @@ export default function Home() {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     setErrorMsg("");
+    setLendo("guia");
     setStatus("extracting");
     try {
       const base64 = await fileToResizedBase64(file);
@@ -1214,7 +1220,7 @@ export default function Home() {
 
         {status === "extracting" && (
           <div style={{ padding: 24, borderRadius: 8, border: `1px solid ${CORES.principal}`, background: CORES.clara, textAlign: "center", fontSize: TEXTO.apoio }}>
-            Lendo a guia…
+            {lendo === "mapa" ? "Lendo o mapa cirúrgico…" : "Lendo a guia…"}
           </div>
         )}
 
