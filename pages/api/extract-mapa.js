@@ -1,3 +1,4 @@
+import { semOsIgnorados } from "../../lib/procedimentos";
 import { normalizarTexto, semTratamento } from "../../lib/texto";
 
 export const config = {
@@ -151,9 +152,9 @@ export default async function handler(req, res) {
         convenio: (p.convenio || "").toString().trim(),
         nGuia: (p.nGuia || "").toString().replace(/\D/g, ""),
         cirurgiao: semTratamento(p.cirurgiao),
-        procedimentos: (Array.isArray(p.procedimentos) ? p.procedimentos : [p.procedimentos])
-          .map((x) => (x || "").toString().trim())
-          .filter(Boolean),
+        // A mesma regra da guia: internação, visita hospitalar e recém-nascido
+        // são item do hospital, não ato anestésico, e não entram na lista.
+        procedimentos: semOsIgnorados(p.procedimentos),
       }))
       .filter((p) => !ehRecado(p));
 

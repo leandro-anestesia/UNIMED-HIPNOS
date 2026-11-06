@@ -1,5 +1,6 @@
 import { nomeCurtoDoConvenio, semCodigoNaFrente } from "../../lib/convenios";
-import { normalizarTexto, semTratamento } from "../../lib/texto";
+import { PROCEDIMENTOS_IGNORADOS, semOsIgnorados } from "../../lib/procedimentos";
+import { semTratamento } from "../../lib/texto";
 
 export const config = {
   api: {
@@ -62,7 +63,7 @@ Como preencher cada campo:
 
 - "procedimentos": uma entrada para cada linha da tabela "Procedimentos ou Itens Assistenciais Solicitados", juntando a coluna "35 - Código do Procedimento" com a "36 - Descrição", no formato "CÓDIGO - DESCRIÇÃO". Exemplo: "31309127 - PARTO (VIA VAGINAL)".
   A descrição às vezes ocupa duas linhas na impressão: junte os pedaços numa entrada só.
-  IGNORE também a linha cuja descrição é INTERNAÇÃO (por exemplo "99996666 - INTERNACAO"): é a internação hospitalar em si, não um ato anestésico, e não entra na lista.
+  IGNORE as linhas que não são ato anestésico e sim item do hospital: ${PROCEDIMENTOS_IGNORADOS.map((t) => t.nome.toUpperCase()).join(", ")}. Basta o termo aparecer em qualquer parte da descrição — "99996666 - INTERNACAO", "DIÁRIA DE INTERNAÇÃO", "VISITA HOSPITALAR (POR DIA)" — para a linha ficar fora da lista.
   IGNORE POR COMPLETO a seção "Gabaritos Solicitados", que vem logo abaixo e tem aparência de tabela igual: gabarito é pacote de cobrança, não é procedimento, e não pode entrar na lista.
   Se a linha tiver descrição mas o código estiver ilegível, devolva só a descrição.
 
@@ -94,22 +95,6 @@ Regras gerais:
  */
 function nomeDoConvenio(valor) {
   return nomeCurtoDoConvenio(semCodigoNaFrente(valor));
-}
-
-/**
- * A linha de internação, que a guia lista junto dos procedimentos.
- *
- * A internação é a diária do hospital, não um ato anestésico: vinha marcada
- * para o anestesista desmarcar toda vez. A instrução de leitura já pede para
- * pular, e aqui a regra vale mesmo quando o modelo traz assim mesmo.
- *
- * Compara pela descrição, depois do código, e pela primeira palavra: pega
- * "99996666 - INTERNACAO" e "INTERNAÇÃO HOSPITALAR", e não pega um
- * procedimento que só mencione internação no meio do texto.
- */
-function ehInternacao(procedimento) {
-  const descricao = (procedimento || "").toString().replace(/^\s*\d+\s*[-–—]\s*/, "");
-  return normalizarTexto(descricao).split(/\s+/)[0] === "internacao";
 }
 
 export default async function handler(req, res) {
@@ -169,13 +154,13 @@ export default async function handler(req, res) {
 
     const parsed = JSON.parse(clean);
 
-    // O formulário conta com uma lista aqui. Se a leitura devolver um texto só
-    // (acontece quando a guia tem um único procedimento), vira lista de um item.
-    const procedimentos = Array.isArray(parsed.procedimentos)
-      ? parsed.procedimentos
-      : parsed.procedimentos
-      ? [parsed.procedimentos]
-      : [];
+    // O formulário conta com uma lista aqui. `semOsIgnorados` aceita texto solto
+    // (acontece quando a guia tem um único procedimento) e já tira o que não é
+    // ato anestésico: internação, visita hospitalar e recém-nascido. A instrução de
+    // leitura acima pede a mesma coisa, montada da mesma lista, e esta aqui vale
+    // mesmo quando o modelo traz a linha assim mesmo. A lista mora em lib/
+    // porque a leitura do mapa cirúrgico usa a mesma.
+    const procedimentos = semOsIgnorados(parsed.procedimentos);
 
     return res.status(200).json({
       data: (parsed.data || "").toString().trim(),
@@ -185,10 +170,7 @@ export default async function handler(req, res) {
       nGuia: parsed.nGuia || "",
       nCarteira: parsed.nCarteira || "",
       cirurgiao: semTratamento(parsed.cirurgiao),
-      procedimentos: procedimentos
-        .map((p) => (p || "").toString().trim())
-        .filter(Boolean)
-        .filter((p) => !ehInternacao(p)),
+      procedimentos,
     });
   } catch (err) {
     console.error(err);
