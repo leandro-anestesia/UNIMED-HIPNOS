@@ -2654,7 +2654,23 @@ function AutocompleteInput({ value, onChange, options, placeholder, invalid }) {
 
   const q = normalizarTexto(value);
   const matches = (q ? options.filter((o) => normalizarTexto(o).includes(q)) : options).slice(0, 50);
-  const showList = open && matches.length > 0;
+
+  /**
+   * O campo já é exatamente a única sugestão que resta.
+   *
+   * Depois de tocar num nome, a lista continuava aberta embaixo do campo,
+   * repetindo o nome que acabara de ser escolhido, e só sumia ao rolar a tela
+   * ou ao tocar em outro campo: no iPhone o teclado fica em pé e o foco volta
+   * para a caixa de texto, e voltar o foco reabre a lista.
+   *
+   * Fechar por aqui não depende de descobrir quem devolveu o foco: quando o que
+   * está escrito é igual à única opção que sobrou, não há mais o que escolher, e
+   * uma lista de um item igual ao campo não ajuda ninguém. Vale também para quem
+   * digita o nome inteiro à mão. Com duas opções parecidas — "ANA RITA" e "ANA
+   * RITA DE TULLIO" — a lista continua aberta, que é o certo: ainda há escolha.
+   */
+  const jaEscolhido = matches.length === 1 && normalizarTexto(matches[0]) === q;
+  const showList = open && matches.length > 0 && !jaEscolhido;
 
   return (
     <div ref={wrapperRef} style={{ position: "relative" }}>
@@ -2693,6 +2709,10 @@ function AutocompleteInput({ value, onChange, options, placeholder, invalid }) {
           {matches.map((opt) => (
             <div
               key={opt}
+              // Segurar o foco onde está: sem isto o toque tira o foco da caixa
+              // de texto e o devolve logo em seguida, e é essa volta que reabria
+              // a lista. O clique continua acontecendo normalmente.
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onChange(opt);
                 setOpen(false);
