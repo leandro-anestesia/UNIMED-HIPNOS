@@ -20,6 +20,7 @@ import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
 import { estadoDe, foiExecutada, opcoesDe, padraoDe, rotuloDe } from "../lib/estados";
 import { NOMES_DE_LOCAL, leituraDoLocal } from "../lib/locais";
+import { chaveDeOrdem, ordenarRegistros } from "../lib/ordem";
 import { modeloDoRegistro } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import {
@@ -158,31 +159,6 @@ function mesesDosRegistros(entries) {
     .map((chave) => ({ chave, total: contagem[chave] }));
 }
 
-/**
- * Da cirurgia mais antiga para a mais recente, como a planilha.
- *
- * A lista já era ordenada por data, mas ao contrário: o dia 10 no topo e o dia
- * 1º no fim. Quem confere lê a aba do mês na planilha, que começa pelo dia 1º,
- * e as duas listas não se correspondiam — a mesma pergunta era respondida em
- * ordens opostas nas duas telas.
- *
- * Empate desfeito pela ordem de lançamento, também crescente: num mapa
- * cirúrgico com vinte pacientes do mesmo dia, é a ordem em que eles foram
- * lidos, que é a ordem da folha. Antes, invertida, o último paciente do mapa
- * aparecia primeiro.
- *
- * Registro sem data vai para o fim, e não para o começo: "" ordena antes de
- * qualquer data, e o que não se sabe quando foi não pode abrir o mês.
- */
-function ordenarPorData(a, b) {
-  const da = (a.dataCirurgia || "").trim();
-  const db = (b.dataCirurgia || "").trim();
-  if (!da !== !db) return da ? -1 : 1;
-
-  const porData = da.localeCompare(db);
-  if (porData !== 0) return porData;
-  return (a.criadoEm || "").localeCompare(b.criadoEm || "");
-}
 
 function entryMatchesSearch(e, query) {
   const q = normalizarTexto(query);
@@ -910,6 +886,14 @@ export default function Home() {
       ...dados,
       horaLancamento: agoraLocal().hora,
       procedimentos: paraLinhas(entry.procedimentos),
+      // Onde a cópia entra na ordem: logo depois do registro que ela copiou,
+      // na planilha e na lista. Sem isto ela ia para o fim do dia, longe do
+      // original, e os dois lançamentos que nasceram juntos ficavam separados
+      // por todos os pacientes lançados entre um e outro.
+      //
+      // Guarda a chave do original, e não o `criadoEm` dele: copiar uma cópia
+      // entra no mesmo grupo, atrás da primeira, em vez de abrir outro.
+      ordenarApos: chaveDeOrdem(entry),
     });
     setEditingId(null);
     setImagePreview(null);
@@ -1021,7 +1005,7 @@ export default function Home() {
     .filter((e) => convenioFiltro === TODOS_OS_CONVENIOS || (e.convenio || "").trim() === convenioFiltro)
     .filter((e) => entryMatchesSearch(e, searchQuery))
     .filter((e) => buscando || mesSelecionado === TODOS_OS_MESES || !mesSelecionado || chaveDoMes(e) === mesSelecionado)
-    .sort(ordenarPorData);
+    .sort(ordenarRegistros);
 
   const resumo = {
     total: registrosVisiveis.length,

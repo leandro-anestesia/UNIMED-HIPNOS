@@ -8,6 +8,7 @@ import {
   valorDaColuna,
 } from "../lib/campos";
 import { ALVO, ESPACO, TEXTO, btnDiscreto, btnPrimary, inputStyle } from "../lib/estilo";
+import { ordenarRegistros } from "../lib/ordem";
 import { aceitaVazio, estadoDe, foiExecutada, foiRecebido, opcoesDe } from "../lib/estados";
 import { CORES, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import { MODELOS, modeloDoRegistro } from "../lib/modelos";
@@ -242,7 +243,7 @@ export default function Secretaria() {
           .map((v) => normalizarTexto(v))
           .some((v) => v.includes(procura));
       })
-      .sort((a, b) => (a.dataCirurgia || "").localeCompare(b.dataCirurgia || ""));
+      .sort(ordenarRegistros);
   }, [doModelo, filtros, pendencia, busca]);
 
   const cestas = useMemo(() => contarPendencias(doModelo), [doModelo]);
