@@ -8,7 +8,7 @@ import {
   valorDaColuna,
 } from "../lib/campos";
 import { ALVO, ESPACO, TEXTO, btnDiscreto, btnPrimary, inputStyle } from "../lib/estilo";
-import { estadoDe, foiExecutada, foiRecebido, opcoesDe } from "../lib/estados";
+import { aceitaVazio, estadoDe, foiExecutada, foiRecebido, opcoesDe } from "../lib/estados";
 import { CORES, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import { MODELOS, modeloDoRegistro } from "../lib/modelos";
 import { contarPendencias, diasParados, temPendencia } from "../lib/pendencias";
@@ -857,6 +857,11 @@ function Celula({ entry, coluna, modelo, onGravar }) {
             onChange={(ev) => onGravar(entry, coluna.key, ev.target.value)}
             style={{ ...inputStyle, padding: "6px 8px", fontSize: TEXTO.apoio, width: "auto" }}
           >
+            {/* A opção vazia, onde o campo admite ficar sem escolha: é ela que
+                mostra o Executado ainda não respondido e, se alguém escolher
+                errado, é por ela que se volta ao branco. Sem ela o seletor fica
+                sem nenhuma opção marcada, o que se lê igual a um erro. */}
+            {aceitaVazio(coluna.escolha) && <option value="">—</option>}
             {opcoesDe(coluna.escolha).map((o) => (
               <option key={o.valor} value={o.valor}>
                 {o.rotulo}
