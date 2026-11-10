@@ -2322,7 +2322,10 @@ function Escolha({ campo, valor, onEscolher, grande }) {
   const atual = estadoDe(campo, valor);
 
   return (
-    <div style={{ display: "flex", gap: grande ? 8 : 6, flexShrink: 0 }}>
+    // `flexWrap` por causa da quarta opção do PC Executado: "Pendente",
+    // "Retirado" e "Não Retirado" na mesma fileira não cabem em tela de
+    // celular, e sem quebrar a linha o último botão sai pela borda do cartão.
+    <div style={{ display: "flex", flexWrap: "wrap", gap: grande ? 8 : 6, flexShrink: 0 }}>
       {opcoesDe(campo).map((estado) => (
         <button
           key={estado.valor}
