@@ -158,11 +158,30 @@ function mesesDosRegistros(entries) {
     .map((chave) => ({ chave, total: contagem[chave] }));
 }
 
-/** Do lançamento mais recente para o mais antigo; empate desfeito pela criação. */
+/**
+ * Da cirurgia mais antiga para a mais recente, como a planilha.
+ *
+ * A lista já era ordenada por data, mas ao contrário: o dia 10 no topo e o dia
+ * 1º no fim. Quem confere lê a aba do mês na planilha, que começa pelo dia 1º,
+ * e as duas listas não se correspondiam — a mesma pergunta era respondida em
+ * ordens opostas nas duas telas.
+ *
+ * Empate desfeito pela ordem de lançamento, também crescente: num mapa
+ * cirúrgico com vinte pacientes do mesmo dia, é a ordem em que eles foram
+ * lidos, que é a ordem da folha. Antes, invertida, o último paciente do mapa
+ * aparecia primeiro.
+ *
+ * Registro sem data vai para o fim, e não para o começo: "" ordena antes de
+ * qualquer data, e o que não se sabe quando foi não pode abrir o mês.
+ */
 function ordenarPorData(a, b) {
-  const porData = (b.dataCirurgia || "").localeCompare(a.dataCirurgia || "");
+  const da = (a.dataCirurgia || "").trim();
+  const db = (b.dataCirurgia || "").trim();
+  if (!da !== !db) return da ? -1 : 1;
+
+  const porData = da.localeCompare(db);
   if (porData !== 0) return porData;
-  return (b.criadoEm || "").localeCompare(a.criadoEm || "");
+  return (a.criadoEm || "").localeCompare(b.criadoEm || "");
 }
 
 function entryMatchesSearch(e, query) {
@@ -1932,20 +1951,44 @@ export default function Home() {
                       <div style={{ fontSize: TEXTO.corpo, lineHeight: 1.3 }}>
                         {e.paciente || "(sem nome)"}
                       </div>
-                      {/* O convênio em etiqueta, na cor da faixa: diz para qual
-                          das três planilhas o paciente vai, sem precisar abrir
-                          o cartão nem ler o nome inteiro. */}
-                      {e.convenio && (
+                      {/* A data e o convênio na mesma linha de apoio.
+                          
+                          O convênio em etiqueta, na cor da faixa, diz para qual
+                          das três planilhas o paciente vai, sem precisar abrir o
+                          cartão nem ler o nome inteiro. A data vem antes dele e
+                          em cor neutra: é o que situa o paciente no mês, e com a
+                          lista ordenada por data ela também diz onde começa e
+                          termina cada dia. Numa linha só, para o cartão fechado
+                          não ganhar altura. */}
+                      {(e.dataCirurgia || e.convenio) && (
                         <div
                           style={{
                             marginTop: 2,
                             fontSize: TEXTO.miudo,
                             fontWeight: 600,
                             letterSpacing: "0.04em",
-                            color: corDoConvenio(e.convenio) || CORES.suave,
+                            display: "flex",
+                            gap: 6,
+                            minWidth: 0,
                           }}
                         >
-                          {e.convenio}
+                          {e.dataCirurgia && (
+                            <span style={{ color: CORES.suave, flexShrink: 0 }}>
+                              {formatarData(e.dataCirurgia)}
+                            </span>
+                          )}
+                          {e.convenio && (
+                            <span
+                              style={{
+                                color: corDoConvenio(e.convenio) || CORES.suave,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {e.convenio}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
