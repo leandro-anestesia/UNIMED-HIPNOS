@@ -9,7 +9,7 @@ export const config = {
 };
 
 /**
- * Leitura da foto da GUIA (não da etiqueta do paciente).
+ * Leitura da foto de um documento de paciente: a guia, a etiqueta ou a ficha.
  *
  * A instrução foi calibrada contra uma Guia de Solicitação de Internação da
  * Unimed Campinas, no padrão TISS, em que os campos são numerados. Os números
@@ -21,13 +21,21 @@ export const config = {
  * o número da guia aparece três vezes com valores quase iguais, o número da
  * carteira começa com zeros que não podem cair, e a tabela de procedimentos é
  * seguida por uma de "Gabaritos" que não é procedimento nenhum.
+ *
+ * O terceiro documento é a ficha de VIDEO DIAGNÓSTICO da Endodiagnose, que ali
+ * faz as vezes da guia: folha A4 preenchida à caneta, com os exames marcados a
+ * X no alto. Ela também tem o par de campos quase iguais — "Senha da guia
+ * Unimed" e "Senha da guia Anestesia" —, e a equipe decidiu que o Nº da Guia
+ * sai do primeiro; e dois médicos em linhas vizinhas, dos quais vale o
+ * responsável pelo exame, que é quem o faz.
  */
-const PROMPT = `Esta foto é de UM de dois documentos. Reconheça qual antes de ler:
+const PROMPT = `Esta foto é de UM de três documentos. Reconheça qual antes de ler:
 
-(A) uma GUIA de convênio no padrão TISS — em geral a "Guia de Solicitação de Internação" da Unimed, folha grande com os campos numerados; ou
-(B) uma ETIQUETA de paciente impressa pela clínica — um retângulo pequeno, com o nome da clínica no alto e poucas linhas rotuladas ("CLIENTE:", "DATA NASC:", "DATA ATENDIMENTO:", "CONVÊNIO:", "CIRURGIÃO:"), e o procedimento solto embaixo.
+(A) uma GUIA de convênio no padrão TISS — em geral a "Guia de Solicitação de Internação" da Unimed, folha grande com os campos numerados;
+(B) uma ETIQUETA de paciente impressa pela clínica — um retângulo pequeno, com o nome da clínica no alto e poucas linhas rotuladas ("CLIENTE:", "DATA NASC:", "DATA ATENDIMENTO:", "CONVÊNIO:", "CIRURGIÃO:"), e o procedimento solto embaixo; ou
+(C) a FICHA DA ENDODIAGNOSE — folha A4 em retrato, com "ENDODIAGNOSE" no alto, "VIDEO DIAGNÓSTICO" logo abaixo e, em seguida, "ENDOSCOPIA ( ) COLONOSCOPIA ( )" com os quadrados marcados à mão. O resto da folha é uma pilha de linhas rotuladas, preenchidas à caneta.
 
-Os dois preenchem os mesmos campos; a etiqueta simplesmente tem menos deles. Devolva vazio o que o documento não trouxer, e não invente para completar.
+Os três preenchem os mesmos campos; a etiqueta simplesmente tem menos deles. Devolva vazio o que o documento não trouxer, e não invente para completar.
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
@@ -77,6 +85,24 @@ SE FOR ETIQUETA (B), onde cada coisa está:
 - "procedimentos": o texto solto embaixo dos rótulos, sem código TUSS — por exemplo "CIRURGIA DE CATARATA" numa linha e "OLHO ESQUERDO" na seguinte. É UM procedimento só: junte as duas linhas numa entrada, porque a lateralidade faz parte dele. Nunca devolva a lateralidade como procedimento separado.
 - "nGuia", "nCarteira" e "atendimento": a etiqueta normalmente não traz nenhum dos três. Deixe vazios.
 - O nome da clínica no alto da etiqueta NÃO é o convênio.
+
+SE FOR A FICHA DA ENDODIAGNOSE (C), onde cada coisa está:
+
+A folha inteira é preenchida à mão, em letra de forma ou cursiva. Transcreva o que está escrito; não corrija e não complete.
+
+- "paciente": o que vem depois de "Nome :". Use esse, e não o "Nome social:" da linha de cima, que é outro campo e costuma vir vazio.
+- "data": o que vem depois de "Data Exame:", escrito em três pedaços (dia, mês, ano). O ano costuma vir com DOIS dígitos — devolva no formato dd/mm/aaaa, completando o século: "10/11/26" é "10/11/2026".
+  CUIDADO: "Data de Nasc:" é a data de nascimento e fica mais abaixo. Não use essa, e não devolva data de nascimento em campo nenhum.
+- "cirurgiao": o que vem depois de "Médico Responsável pelo exame:", que é quem faz o procedimento. Devolva o nome SEM o "DR"/"DRA" da frente.
+  NÃO use "Médico Solicitante:", a linha logo acima: esse é quem pediu o exame, não quem o faz.
+- "convenio": o que vem depois de "Convênio:". Esta ficha é usada numa clínica onde os pacientes são da Unimed; se o campo estiver vazio ou ilegível, devolva "UNIMED".
+- "nCarteira": o que vem depois de "N. carteirinha:". Costuma ter 17 dígitos e COMEÇAR COM ZEROS — preserve os zeros à esquerda. Só dígitos.
+- "nGuia": o que vem depois de "Senha da guia Unimed:". Só dígitos, sem a validade que vem ao lado.
+  NÃO use "Senha da guia Anestesia:", a linha logo abaixo, nem o CPF, o RG, o CEP ou os telefones.
+- "procedimentos": os exames marcados na linha "ENDOSCOPIA ( ) COLONOSCOPIA ( )", no alto da folha. Devolva uma entrada para CADA quadrado marcado — com os dois marcados, ["ENDOSCOPIA", "COLONOSCOPIA"]; com um só, a lista tem um item. A marca é um X à mão, às vezes por cima de um risco de marca-texto. Quadrado vazio não entra.
+- "atendimento": a ficha não traz. Deixe vazio.
+- Peso, altura, idade, CPF, RG, endereço, CEP, cidade, estado, telefones, acompanhante e "Hora:" NÃO são usados: não devolva nenhum deles em campo nenhum.
+- A folha pode estar sobre outras, e o verso de uma delas aparecer de cabeça para baixo ao fundo: leia só a folha de cima, a que está na frente.
 
 Na guia (A), "data" só é preenchida se a folha trouxer claramente a data da cirurgia ou do atendimento; na dúvida, deixe vazia.
 
