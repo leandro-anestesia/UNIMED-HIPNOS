@@ -1384,7 +1384,7 @@ export default function Home() {
                 // convênio volte a ser particular.
                 if (!cabeNesteRegistro(f, draft)) return null;
 
-                // Lista fechada: o local é um dos doze, e digitar não é opção.
+                // Lista fechada: o local sai dela, e digitar não é opção.
                 if (f.opcoes) {
                   const vazio = !(draft[f.key] || "").trim();
                   const reprovado = f.required && !!errorMsg && vazio;
