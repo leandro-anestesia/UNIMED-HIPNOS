@@ -1611,32 +1611,6 @@ export default function Home() {
                 );
               })}
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>Executado</span>
-                <Escolha
-                  campo="executado"
-                  valor={draft.executado}
-                  onEscolher={(estado) => updateDraft("executado", estado)}
-                  grande
-                />
-              </div>
-
-              {/* O complementar tem o próprio ciclo de cobrança, e só na
-                  conferência da Unimed ele é acompanhado. */}
-              {modeloDoRegistro(draft) === "convenio" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
-                    PC Executado
-                  </span>
-                  <Escolha
-                    campo="pcExecutado"
-                    valor={draft.pcExecutado}
-                    onEscolher={(estado) => updateDraft("pcExecutado", estado)}
-                    grande
-                  />
-                </div>
-              )}
-
               {/* O complementar é cobrança à parte, pela operadora: na
                   planilha particular não há coluna para ele, e aqui seria uma
                   lista de dez caixas sem destino. */}
@@ -1725,6 +1699,39 @@ export default function Home() {
                   placeholder="Observações adicionais"
                 />
               </Field>
+
+              {/* Os dois estados ficam no fim do formulário, depois da
+                  observação, a pedido da equipe: quem lança preenche de uma vez
+                  o que a guia traz e responde o estado por último.
+
+                  Na planilha a ordem não muda — lá o Executado continua sendo a
+                  primeira coluna, que é como a conferência lê o mês. A ordem das
+                  colunas vem de `lib/campos.js`, e nada aqui a toca. */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>Executado</span>
+                <Escolha
+                  campo="executado"
+                  valor={draft.executado}
+                  onEscolher={(estado) => updateDraft("executado", estado)}
+                  grande
+                />
+              </div>
+
+              {/* O complementar tem o próprio ciclo de cobrança, e só na
+                  conferência da Unimed ele é acompanhado. */}
+              {modeloDoRegistro(draft) === "convenio" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
+                    PC Executado
+                  </span>
+                  <Escolha
+                    campo="pcExecutado"
+                    valor={draft.pcExecutado}
+                    onEscolher={(estado) => updateDraft("pcExecutado", estado)}
+                    grande
+                  />
+                </div>
+              )}
             </div>
 
             <div style={{ display: "flex", gap: 8, padding: "0 16px 16px" }}>
