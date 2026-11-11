@@ -28,14 +28,23 @@ export const config = {
  * Unimed" e "Senha da guia Anestesia" —, e a equipe decidiu que o Nº da Guia
  * sai do primeiro; e dois médicos em linhas vizinhas, dos quais vale o
  * responsável pelo exame, que é quem o faz.
+ *
+ * O quarto é a Solicitação de Anátomo Patológico da Unimed, que é a guia usada
+ * no IGCC. Nela quase nada se chama pelo nome que o aplicativo usa: o Nº da
+ * Guia é o "Protocolo", a carteira é o "Código" — com pontos, e ao lado de um
+ * "Código Requisitante" que não serve —, e o cirurgião não é o "Requisitante"
+ * impresso no alto, e sim quem carimbou no pé da folha. A data é ignorada de
+ * propósito: a equipe lança no dia, e a folha traz datas de solicitação e de
+ * atendimento que não são a da anestesia.
  */
-const PROMPT = `Esta foto é de UM de três documentos. Reconheça qual antes de ler:
+const PROMPT = `Esta foto é de UM de quatro documentos. Reconheça qual antes de ler:
 
 (A) uma GUIA de convênio no padrão TISS — em geral a "Guia de Solicitação de Internação" da Unimed, folha grande com os campos numerados;
 (B) uma ETIQUETA de paciente impressa pela clínica — um retângulo pequeno, com o nome da clínica no alto e poucas linhas rotuladas ("CLIENTE:", "DATA NASC:", "DATA ATENDIMENTO:", "CONVÊNIO:", "CIRURGIÃO:"), e o procedimento solto embaixo; ou
-(C) a FICHA DA ENDODIAGNOSE — folha A4 em retrato, com "ENDODIAGNOSE" no alto, "VIDEO DIAGNÓSTICO" logo abaixo e, em seguida, "ENDOSCOPIA ( ) COLONOSCOPIA ( )" com os quadrados marcados à mão. O resto da folha é uma pilha de linhas rotuladas, preenchidas à caneta.
+(C) a FICHA DA ENDODIAGNOSE — folha A4 em retrato, com "ENDODIAGNOSE" no alto, "VIDEO DIAGNÓSTICO" logo abaixo e, em seguida, "ENDOSCOPIA ( ) COLONOSCOPIA ( )" com os quadrados marcados à mão. O resto da folha é uma pilha de linhas rotuladas, preenchidas à caneta; ou
+(D) a SOLICITAÇÃO DE ANÁTOMO PATOLÓGICO — folha A4 impressa, com o logotipo da Unimed no alto à esquerda, o título "SOLICITAÇÃO DE ANÁTOMO PATOLÓGICO" ao lado e um "ANS Nº" à direita. Os campos são impressos, não escritos à mão, em linhas que começam por "Protocolo:", "Beneficiário(a):" e "Requisitante:", e embaixo há uma tabela de "Cód. Proced." e "Descrição". No pé da folha costuma haver um carimbo de médico.
 
-Os três preenchem os mesmos campos; a etiqueta simplesmente tem menos deles. Devolva vazio o que o documento não trouxer, e não invente para completar.
+Os quatro preenchem os mesmos campos; a etiqueta simplesmente tem menos deles. Devolva vazio o que o documento não trouxer, e não invente para completar.
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
@@ -103,6 +112,21 @@ A folha inteira é preenchida à mão, em letra de forma ou cursiva. Transcreva 
 - "atendimento": a ficha não traz. Deixe vazio.
 - Peso, altura, idade, CPF, RG, endereço, CEP, cidade, estado, telefones, acompanhante e "Hora:" NÃO são usados: não devolva nenhum deles em campo nenhum.
 - A folha pode estar sobre outras, e o verso de uma delas aparecer de cabeça para baixo ao fundo: leia só a folha de cima, a que está na frente.
+
+SE FOR A SOLICITAÇÃO DE ANÁTOMO PATOLÓGICO (D), onde cada coisa está:
+
+- "nGuia": o número depois de "Protocolo:". Ele vem com um hífen antes do último dígito, assim: "123456789-7". Esse último dígito é o verificador e FAZ PARTE do número: devolva tudo junto, só os dígitos, sem o hífen — no exemplo, "1234567897".
+- "nCarteira": o número depois de "Código:", na mesma linha do beneficiário. Vem separado por pontos — "0001.0002.000345.00.6" — e são 17 dígitos no total, começando com zeros. Devolva SÓ OS DÍGITOS, sem os pontos e preservando os zeros à esquerda.
+  NÃO use o "Código Requisitante:", que é o registro do médico e tem bem menos dígitos.
+- "paciente": o nome depois de "Beneficiário(a):".
+- "cirurgiao": o nome do CARIMBO no pé da folha — carimbo ou assinatura com o nome do médico, o CRM e a especialidade embaixo. Devolva só o nome, SEM o "DR"/"DRA" da frente e sem o CRM nem a especialidade.
+  NÃO use "Requisitante:", a linha do alto: nesta folha quem faz o procedimento é quem carimbou no pé, e não quem a solicitou.
+- "data": devolva SEMPRE vazio nesta folha, mesmo que haja datas visíveis. "Dt. Solic", "Dt. Atend", "Dt. Intern", "Dt. Alta" e "Dt. Nasc" não são a data do procedimento — quem a informa é o aplicativo.
+- "convenio": devolva "UNIMED". A folha é da Unimed, e é ela que está no alto.
+- "procedimentos": uma entrada para cada linha da tabela "Cód. Proced." / "Descrição", juntando o código com a descrição no formato "CÓDIGO - DESCRIÇÃO". Exemplo: "40202666 - COLONOSCOPIA COM BIOPSIA E/OU CITOLOGIA". A linha de anestesia é um procedimento como os outros e entra na lista.
+  As colunas "Qtd Autoriz." e "Via de acesso", à direita, NÃO entram.
+- "atendimento": a folha não traz. Deixe vazio.
+- Data de nascimento, sexo, CID, a observação com o CID por extenso e o "ANS Nº" NÃO são usados: não devolva nenhum deles em campo nenhum.
 
 Na guia (A), "data" só é preenchida se a folha trouxer claramente a data da cirurgia ou do atendimento; na dúvida, deixe vazia.
 
