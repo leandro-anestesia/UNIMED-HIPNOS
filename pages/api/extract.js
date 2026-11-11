@@ -80,7 +80,7 @@ Como preencher cada campo:
 
 - "procedimentos": uma entrada para cada linha da tabela "Procedimentos ou Itens Assistenciais Solicitados", juntando a coluna "35 - Código do Procedimento" com a "36 - Descrição", no formato "CÓDIGO - DESCRIÇÃO". Exemplo: "31309127 - PARTO (VIA VAGINAL)".
   A descrição às vezes ocupa duas linhas na impressão: junte os pedaços numa entrada só.
-  IGNORE as linhas que não são ato anestésico e sim item do hospital: ${PROCEDIMENTOS_IGNORADOS.map((t) => t.nome.toUpperCase()).join(", ")}. Basta o termo aparecer em qualquer parte da descrição — "99996666 - INTERNACAO", "DIÁRIA DE INTERNAÇÃO", "VISITA HOSPITALAR (POR DIA)" — para a linha ficar fora da lista.
+  IGNORE as linhas que não entram neste controle: ${PROCEDIMENTOS_IGNORADOS.map((t) => t.nome.toUpperCase()).join(", ")}. As três primeiras são item do hospital, e não ato anestésico; a última é a própria anestesia, que a equipe não lança como procedimento. Basta o termo aparecer em qualquer parte da descrição — "99996666 - INTERNACAO", "DIÁRIA DE INTERNAÇÃO", "VISITA HOSPITALAR (POR DIA)" — para a linha ficar fora da lista.
   IGNORE POR COMPLETO a seção "Gabaritos Solicitados", que vem logo abaixo e tem aparência de tabela igual: gabarito é pacote de cobrança, não é procedimento, e não pode entrar na lista.
   Se a linha tiver descrição mas o código estiver ilegível, devolva só a descrição.
 
@@ -123,7 +123,7 @@ SE FOR A SOLICITAÇÃO DE ANÁTOMO PATOLÓGICO (D), onde cada coisa está:
   NÃO use "Requisitante:", a linha do alto: nesta folha quem faz o procedimento é quem carimbou no pé, e não quem a solicitou.
 - "data": devolva SEMPRE vazio nesta folha, mesmo que haja datas visíveis. "Dt. Solic", "Dt. Atend", "Dt. Intern", "Dt. Alta" e "Dt. Nasc" não são a data do procedimento — quem a informa é o aplicativo.
 - "convenio": devolva "UNIMED". A folha é da Unimed, e é ela que está no alto.
-- "procedimentos": uma entrada para cada linha da tabela "Cód. Proced." / "Descrição", juntando o código com a descrição no formato "CÓDIGO - DESCRIÇÃO". Exemplo: "40202666 - COLONOSCOPIA COM BIOPSIA E/OU CITOLOGIA". A linha de anestesia é um procedimento como os outros e entra na lista.
+- "procedimentos": uma entrada para cada linha da tabela "Cód. Proced." / "Descrição", juntando o código com a descrição no formato "CÓDIGO - DESCRIÇÃO". Exemplo: "40202666 - COLONOSCOPIA COM BIOPSIA E/OU CITOLOGIA". A linha da anestesia para endoscopia diagnóstica NÃO entra — vale aqui a mesma regra das linhas ignoradas, acima.
   As colunas "Qtd Autoriz." e "Via de acesso", à direita, NÃO entram.
 - "atendimento": a folha não traz. Deixe vazio.
 - Data de nascimento, sexo, CID, a observação com o CID por extenso e o "ANS Nº" NÃO são usados: não devolva nenhum deles em campo nenhum.
