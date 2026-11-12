@@ -459,14 +459,25 @@ export default function Home() {
    * um nome não pode virar aviso de erro num lançamento que deu certo.
    */
   async function aprenderCadastros(dados) {
-    for (const f of CAMPOS_QUE_APRENDEM) {
-      const valor = (dados[f.key] || "").toString().trim();
-      if (!valor) continue;
-      const jaTem = (cadastros[f.cadastroKey] || []).some(
-        (n) => normalizarTexto(n) === normalizarTexto(valor)
+    const guardar = async (tipo, valor) => {
+      const limpo = (valor || "").toString().trim();
+      if (!limpo) return;
+      const jaTem = (cadastros[tipo] || []).some(
+        (n) => normalizarTexto(n) === normalizarTexto(limpo)
       );
-      if (jaTem) continue;
-      await addCadastro(f.cadastroKey, valor, { avisarFalha: false });
+      if (jaTem) return;
+      await addCadastro(tipo, limpo, { avisarFalha: false });
+    };
+
+    for (const f of CAMPOS_QUE_APRENDEM) {
+      await guardar(f.cadastroKey, dados[f.key]);
+    }
+
+    // O procedimento é lista, e não um campo de texto: cada linha gravada vira
+    // uma entrada do cadastro. É daqui que sai o autocompletar do lançamento
+    // manual — inclusive com os códigos TUSS que entraram pelas guias lidas.
+    for (const descricao of dados.procedimentos || []) {
+      await guardar("procedimentos", descricao);
     }
   }
 
@@ -613,7 +624,11 @@ export default function Home() {
       // teria os convênios e os cirurgiões dele no autocompletar. O local não
       // entra mais: é lista fechada, não cadastro.
       for (const linha of marcadas) {
-        await aprenderCadastros({ convenio: linha.convenio, cirurgiao: linha.cirurgiao });
+        await aprenderCadastros({
+          convenio: linha.convenio,
+          cirurgiao: linha.cirurgiao,
+          procedimentos: linha.procedimentos,
+        });
       }
 
       const pulados = (resposta.duplicados || []).length;
@@ -1574,18 +1589,23 @@ export default function Home() {
                       onChange={(e) => updateProcedimento(i, { incluido: e.target.checked })}
                       style={{ width: 18, height: 18, flexShrink: 0 }}
                     />
-                    <input
-                      style={{
-                        ...inputStyle,
-                        flex: 1,
-                        minWidth: 0,
+                    {/* Autocompletar com o que a equipe já lançou, inclusive o
+                        que veio das guias com código TUSS. Só sugere a partir
+                        de duas letras: a lista tem centenas de entradas, e
+                        abri-la inteira ao tocar no campo seria um paredão por
+                        cima do formulário. O texto continua livre — "EYLIA OD"
+                        não está em tabela nenhuma e precisa continuar valendo. */}
+                    <AutocompleteInput
+                      value={linha.descricao || ""}
+                      onChange={(v) => updateProcedimento(i, { descricao: v.toUpperCase() })}
+                      options={cadastros.procedimentos || []}
+                      placeholder="Código e descrição do procedimento"
+                      minimo={2}
+                      envolve={{ flex: 1, minWidth: 0 }}
+                      estilo={{
                         opacity: linha.incluido ? 1 : 0.45,
                         textDecoration: linha.incluido ? "none" : "line-through",
                       }}
-                      type="text"
-                      value={linha.descricao || ""}
-                      onChange={(e) => updateProcedimento(i, { descricao: e.target.value.toUpperCase() })}
-                      placeholder="Código e descrição do procedimento"
                     />
                     <button type="button" onClick={() => removeProcedimento(i)} style={{ ...iconBtn, color: CORES.alerta, flexShrink: 0 }}>
                       🗑
@@ -2070,6 +2090,16 @@ export default function Home() {
                 Os locais não estão mais aqui: viraram lista fechada no código,
                 e um cadastro que aprende ao lado de uma lista fechada só
                 serviria para criar um décimo terceiro local escrito torto. */}
+            {/* A lista cresce sozinha, a cada registro salvo. Está aqui pelo
+                motivo contrário: apagar o que entrou escrito errado. */}
+            <CadastroSection
+              title="Procedimentos"
+              placeholder="Código e descrição do procedimento"
+              items={cadastros.procedimentos}
+              onAdd={(nome) => addCadastro("procedimentos", nome)}
+              onImportar={(nomes) => importarCadastros("procedimentos", nomes)}
+              onRemove={(nome) => removeCadastro("procedimentos", nome)}
+            />
             <CadastroSection
               title="Convênios"
               placeholder="Nome do convênio"
@@ -2671,7 +2701,7 @@ function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, desabilita
   );
 }
 
-function AutocompleteInput({ value, onChange, options, placeholder, invalid }) {
+function AutocompleteInput({ value, onChange, options, placeholder, invalid, minimo = 0, envolve, estilo }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
 
@@ -2707,12 +2737,18 @@ function AutocompleteInput({ value, onChange, options, placeholder, invalid }) {
    * RITA DE TULLIO" — a lista continua aberta, que é o certo: ainda há escolha.
    */
   const jaEscolhido = matches.length === 1 && normalizarTexto(matches[0]) === q;
-  const showList = open && matches.length > 0 && !jaEscolhido;
+  // `minimo` existe para as listas longas: a de procedimentos tem centenas de
+  // entradas, e oferecê-las ao simples tocar no campo não ajuda a escolher.
+  const showList = open && q.length >= minimo && matches.length > 0 && !jaEscolhido;
 
   return (
-    <div ref={wrapperRef} style={{ position: "relative" }}>
+    <div ref={wrapperRef} style={{ position: "relative", ...envolve }}>
       <input
-        style={invalid ? { ...inputStyle, border: `1px solid ${CORES.alerta}`, background: CORES.alertaFundo } : inputStyle}
+        style={{
+          ...inputStyle,
+          ...(invalid ? { border: `1px solid ${CORES.alerta}`, background: CORES.alertaFundo } : null),
+          ...estilo,
+        }}
         type="text"
         autoComplete="off"
         autoCorrect="off"
