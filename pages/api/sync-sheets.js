@@ -1,3 +1,4 @@
+import { aprenderProcedimentos } from "../../lib/cadastros";
 import { sheetsEnabled, syncTudo, pullDaPlanilha } from "../../lib/sheets";
 import { normalizarRegistro, mudouNaNormalizacao } from "../../lib/registro";
 import { rotuloDaFalha } from "../../lib/modelos";
@@ -47,11 +48,27 @@ export default async function handler(req, res) {
       console.error("Falha ao ler alterações da planilha:", err.message);
     }
 
+    // O cadastro de procedimentos aprende do que já está lançado.
+    //
+    // O aprendizado normal acontece no aparelho de quem salva, e isso deixa de
+    // fora o que foi lançado antes de o campo aprender e o que alguém digita
+    // direto na planilha. Aqui o servidor tem todos os registros na mão.
+    //
+    // Nunca derruba a sincronização: falhar em cadastrar um nome não pode virar
+    // erro numa sincronização que escreveu a planilha inteira.
+    let procedimentosAprendidos = 0;
+    try {
+      procedimentosAprendidos = await aprenderProcedimentos(entries);
+    } catch (err) {
+      console.error("Falha ao aprender os procedimentos:", err.message);
+    }
+
     const { sincronizados, falhas } = await syncTudo(entries);
     return res.status(200).json({
       ok: Object.keys(falhas).length === 0,
       configurado: true,
       registros: entries.length,
+      procedimentosAprendidos,
       importadosDaPlanilha: mudancas,
       recusadas,
       guiasCompletadas,

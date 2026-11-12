@@ -970,6 +970,11 @@ export default function Home() {
       if (alterados > 0) trouxe.push(`${alterados} registro(s) alterado(s) na planilha`);
       if (novos > 0) trouxe.push(`${novos} lançamento(s) digitado(s) na planilha`);
 
+      // Só aparece quando houve o que aprender — e é o que avisa que a primeira
+      // sincronização encheu o autocompletar de procedimentos de uma vez.
+      const aprendidos = data.procedimentosAprendidos || 0;
+      const cadastrou = aprendidos > 0 ? `\n\n${aprendidos} procedimento(s) entraram no autocompletar.` : "";
+
       // O que a planilha mudou e o app não pôde aceitar precisa aparecer: em
       // silêncio, a pessoa acharia que a correção dela valeu.
       const recusadas = data.recusadas || [];
@@ -983,9 +988,9 @@ export default function Home() {
       } else if (!data.ok) {
         avisar("Sincronizado com pendências:\n" + JSON.stringify(data.falhas || {}, null, 2), "erro");
       } else if (trouxe.length > 0) {
-        avisar(`Planilha sincronizada. Trouxe ${trouxe.join(" e ")}.${pendencias}`);
+        avisar(`Planilha sincronizada. Trouxe ${trouxe.join(" e ")}.${cadastrou}${pendencias}`);
       } else {
-        avisar(`Planilha sincronizada. Nada novo vindo dela.${pendencias}`);
+        avisar(`Planilha sincronizada. Nada novo vindo dela.${cadastrou}${pendencias}`);
       }
     } catch (e) {
       console.error(e);
