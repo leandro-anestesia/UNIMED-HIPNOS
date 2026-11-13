@@ -59,6 +59,53 @@ const TRAVA = "guias:sync:trava";
 const PENDENTE = "guias:sync:pendente";
 
 /**
+ * O que está esperando para ser espelhado: os registros mexidos no app e os
+ * anos a reescrever.
+ *
+ * Mora no banco, e não na memória de quem começou o ciclo, porque não é quem
+ * começou que termina. Só um worker espelha por vez; quem chega no meio marca
+ * pendência e vai embora, e é o worker em curso que refaz a volta. Guardado em
+ * memória, ele refazia a volta com a lista de quem o chamou — e o registro de
+ * quem chegou depois ficava desprotegido na leitura da planilha, que então
+ * devolvia o valor antigo por cima. Era assim que um "Não" marcado no app
+ * voltava a ser "Sim" sozinho, sem ninguém sincronizar.
+ */
+const IDS_PENDENTES = "guias:sync:ids";
+const ANOS_PENDENTES = "guias:sync:anos";
+
+/** O que está acumulado agora, sem consumir: quem usa só apaga no fim. */
+async function pendenciasAcumuladas() {
+  const [anos, ids] = await Promise.all([
+    kv.smembers(ANOS_PENDENTES),
+    kv.smembers(IDS_PENDENTES),
+  ]);
+  return { anos: anos || [], ids: ids || [] };
+}
+
+/**
+ * Tira da fila exatamente o que foi usado — nem mais, nem menos.
+ *
+ * Apagar a chave inteira perderia o que chegou enquanto o ciclo rodava. Tirar
+ * só o que foi lido deixa o recém-chegado na fila: ele entra na volta seguinte,
+ * protegido. O preço é um registro ficar protegido um ciclo a mais do que o
+ * necessário, o que no máximo adia em uma volta a leitura de uma correção feita
+ * direto na planilha.
+ */
+async function consumirPendencias({ anos, ids }) {
+  await Promise.all([
+    anos.length > 0 ? kv.srem(ANOS_PENDENTES, ...anos) : null,
+    ids.length > 0 ? kv.srem(IDS_PENDENTES, ...ids) : null,
+  ]);
+}
+
+/** Uma volta: pega o que está acumulado, espelha e tira da fila o que usou. */
+async function umCicloDeEspelhamento() {
+  const pendencias = await pendenciasAcumuladas();
+  await espelharNoSheets(await lerTudo(), pendencias.anos, pendencias.ids);
+  await consumirPendencias(pendencias);
+}
+
+/**
  * Manda espelhar na planilha DEPOIS de responder ao app.
  *
  * O banco é o dono do dado; a planilha é espelho. Esperar as ~11 chamadas ao
@@ -80,17 +127,25 @@ function espelharDepoisDeResponder(anos, idsDoApp = []) {
 
   const tarefa = (async () => {
     try {
+      // A fila primeiro, a marca depois. Nesta ordem, quem vir a marca já
+      // enxerga o que ela anuncia; na ordem inversa, o ciclo poderia começar
+      // sem o id que o chamou.
+      const anosLimpos = [...new Set(anos.filter(Boolean))];
+      const idsLimpos = [...new Set(idsDoApp.filter(Boolean))];
+      if (anosLimpos.length > 0) await kv.sadd(ANOS_PENDENTES, ...anosLimpos);
+      if (idsLimpos.length > 0) await kv.sadd(IDS_PENDENTES, ...idsLimpos);
       await kv.set(PENDENTE, "1");
 
       // Só um worker de cada vez. Quem não pegar a trava vai embora: o worker
-      // ativo enxerga a marca de pendente e refaz o ciclo.
+      // ativo enxerga a marca de pendente e refaz o ciclo — agora lendo a fila
+      // do banco, onde está também o que chegou depois dele.
       const pegouATrava = await kv.set(TRAVA, "1", { nx: true, ex: 120 });
       if (!pegouATrava) return;
 
       try {
         while (await kv.get(PENDENTE)) {
           await kv.del(PENDENTE);
-          await espelharNoSheets(await lerTudo(), anos, idsDoApp);
+          await umCicloDeEspelhamento();
         }
       } finally {
         await kv.del(TRAVA);
@@ -103,7 +158,7 @@ function espelharDepoisDeResponder(anos, idsDoApp = []) {
         if (deNovo) {
           try {
             await kv.del(PENDENTE);
-            await espelharNoSheets(await lerTudo(), anos, idsDoApp);
+            await umCicloDeEspelhamento();
           } finally {
             await kv.del(TRAVA);
           }
