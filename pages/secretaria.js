@@ -178,6 +178,12 @@ export default function Secretaria() {
     setErro("");
     try {
       const r = await fetch(`/api/entries?mes=${encodeURIComponent(mes)}`);
+      if (r.status === 401) {
+        // A sessão acabou. Mostrar "não consegui carregar" aqui faria parecer
+        // defeito do servidor.
+        window.location.href = "/entrar?de=/secretaria";
+        return;
+      }
       if (!r.ok) throw new Error(`o servidor respondeu ${r.status}`);
       const lista = await r.json();
       setRegistros(Array.isArray(lista) ? lista : []);
@@ -192,6 +198,29 @@ export default function Secretaria() {
 
   useEffect(() => {
     carregar();
+  }, [carregar]);
+
+  /**
+   * E de novo quando a aba volta do congelador do navegador.
+   *
+   * Mesma razão do app: uma página restaurada volta com os pacientes já na
+   * tela e sem perguntar nada ao servidor. Aqui a releitura resolve as duas
+   * coisas de uma vez — traz o que mudou no mês e, se a sessão tiver acabado,
+   * o 401 acima manda para o PIN.
+   */
+  useEffect(() => {
+    function aoVoltar(evento) {
+      if (evento.type === "pageshow" && !evento.persisted) return;
+      if (evento.type === "visibilitychange" && document.visibilityState !== "visible") return;
+      carregar();
+    }
+
+    window.addEventListener("pageshow", aoVoltar);
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => {
+      window.removeEventListener("pageshow", aoVoltar);
+      document.removeEventListener("visibilitychange", aoVoltar);
+    };
   }, [carregar]);
 
   useEffect(() => {
