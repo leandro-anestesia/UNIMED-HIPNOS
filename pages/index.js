@@ -315,6 +315,8 @@ export default function Home() {
    * - objeto: o papel manda.
    */
   const [acesso, setAcesso] = useState(undefined);
+  // O menu da pessoa, no cabeçalho. Fechado por padrão: ele cobre conteúdo.
+  const [menuDoAcesso, setMenuDoAcesso] = useState(false);
 
   const permissao = useCallback(
     (teste) => {
@@ -1279,17 +1281,80 @@ export default function Home() {
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${CORES.principal}, ${CORES.acento})` }} />
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <img src="/logo-mark.png" alt={EQUIPE} style={{ height: 40, width: "auto", objectFit: "contain", flexShrink: 0 }} />
-          <div>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: TEXTO.miudo, letterSpacing: "0.15em", color: CORES.acento, textTransform: "uppercase", marginBottom: 4 }}>
               {EQUIPE}
             </div>
-            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 400, color: CORES.sobreEscura }}>{TITULO}</h1>
+            {/* O corpo acompanha a largura da tela: com o botão da conta ao
+                lado, 26px fixos quebravam "Controle de Cirurgias" em duas
+                linhas num iPhone estreito, e o cabeçalho crescia junto. */}
+            <h1 style={{ margin: 0, fontSize: "clamp(20px, 6vw, 26px)", fontWeight: 400, color: CORES.sobreEscura, whiteSpace: "nowrap" }}>
+              {TITULO}
+            </h1>
             <div style={{ fontSize: TEXTO.apoio, color: CORES.acento, marginTop: 4 }}>
               {loaded ? `${entries.length} registro${entries.length === 1 ? "" : "s"} · compartilhado` : "carregando…"}
             </div>
           </div>
+
+          {/* Quem está logado, e por onde se sai.
+              
+              No cabeçalho porque vale nas três abas: antes isso morava só no
+              fim dos Cadastros, e quem quisesse sair tinha de ir procurar. As
+              iniciais, e não um ícone genérico, porque num aparelho
+              compartilhado a primeira pergunta é "estou logado como quem?". */}
+          <button
+            type="button"
+            onClick={() => setMenuDoAcesso((v) => !v)}
+            // O texto do botão são as iniciais, que não dizem nada a quem usa
+            // leitor de tela — daí o rótulo explícito.
+            aria-label="Sua conta"
+            title="Sua conta"
+            style={{
+              width: ALVO,
+              height: ALVO,
+              flexShrink: 0,
+              borderRadius: "50%",
+              background: menuDoAcesso ? CORES.acento : "transparent",
+              color: menuDoAcesso ? CORES.escura : CORES.acento,
+              border: `1px solid ${CORES.acento}`,
+              fontSize: TEXTO.apoio,
+              fontWeight: 700,
+              letterSpacing: "0.03em",
+              cursor: "pointer",
+            }}
+          >
+            {iniciaisDe(acesso)}
+          </button>
         </div>
       </div>
+
+      {menuDoAcesso && (
+        <>
+          {/* A camada que fecha o menu ao tocar fora. Sem ela, no celular só o
+              próprio botão fecharia, e o menu ficaria preso na tela. */}
+          <div
+            onClick={() => setMenuDoAcesso(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 40 }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              right: 16,
+              zIndex: 41,
+              marginTop: -8,
+              width: 272,
+              maxWidth: "calc(100vw - 32px)",
+              background: "white",
+              border: `1px solid ${CORES.borda}`,
+              borderRadius: 10,
+              boxShadow: "0 8px 24px rgba(26,26,26,0.18)",
+              padding: ESPACO[4],
+            }}
+          >
+            <MeuAcesso eu={acesso} avisar={avisar} aoTerminar={() => setMenuDoAcesso(false)} />
+          </div>
+        </>
+      )}
 
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 16px" }}>
         {/* Sem isto, "não carregou" e "não há nada" ficam iguais na tela. */}
@@ -2355,8 +2420,6 @@ export default function Home() {
               📊 Área de conferência
             </a>
             )}
-
-            <MeuAcesso eu={acesso} avisar={avisar} />
           </div>
         )}
       </div>
@@ -3389,7 +3452,34 @@ function SecaoDeAcesso({ cadastros, avisar, eu }) {
  * vazou, o cookie que ele gerou vazou também —, e este aparelho recebe um
  * cookie novo na mesma resposta.
  */
-function MeuAcesso({ eu, avisar }) {
+/**
+ * As iniciais de quem está logado, para o botão do cabeçalho.
+ *
+ * Iniciais, e não um ícone genérico: num aparelho que passa de mão em mão, a
+ * primeira pergunta é "estou logado como quem?", e um bonequinho não responde.
+ */
+function iniciaisDe(eu) {
+  if (!eu) return "👤";
+
+  const palavras = (eu.nome || "").trim().split(/\s+/).filter(Boolean);
+  if (palavras.length >= 2) return (palavras[0][0] + palavras[palavras.length - 1][0]).toUpperCase();
+  if (palavras.length === 1) return palavras[0].slice(0, 2).toUpperCase();
+
+  return (eu.usuario || "").replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "👤";
+}
+
+/**
+ * O painel da conta, no cabeçalho: quem sou, trocar meu PIN, sair.
+ *
+ * Fica no cabeçalho porque vale nas três abas. Antes morava no fim dos
+ * Cadastros, e sair do app exigia ir procurar.
+ *
+ * "Trocar meu PIN" existe para os três papéis porque o PIN inicial é o mesmo
+ * para a equipe inteira: trocar o seu é o que faz dele um PIN seu. Trocar
+ * derruba os OUTROS aparelhos — se o antigo vazou, o cookie que ele gerou
+ * vazou também —, e este aqui recebe um cookie novo na mesma resposta.
+ */
+function MeuAcesso({ eu, avisar, aoTerminar }) {
   const [aberto, setAberto] = useState(false);
   const [atual, setAtual] = useState("");
   const [novo, setNovo] = useState("");
@@ -3410,6 +3500,7 @@ function MeuAcesso({ eu, avisar }) {
       setAberto(false);
       setAtual("");
       setNovo("");
+      if (aoTerminar) aoTerminar();
     } catch (e) {
       avisar(`Não consegui trocar o PIN: ${e.message}`, "erro");
     } finally {
@@ -3423,15 +3514,21 @@ function MeuAcesso({ eu, avisar }) {
     } catch (e) {
       console.error(e);
     }
+    // Navegação de verdade, e não troca de tela: assim o que estava carregado
+    // em memória sai junto com a sessão.
     window.location.href = "/entrar";
   }
 
   const soDigitos = (v) => v.replace(/\D/g, "").slice(0, DIGITOS_DO_PIN);
+  const botao = { ...btnSecondary, width: "100%", flex: "none", padding: "11px 12px", fontSize: TEXTO.apoio };
 
   return (
-    <div style={{ marginTop: ESPACO[6], paddingTop: ESPACO[4], borderTop: `1px solid ${CORES.borda}` }}>
-      <div style={{ fontSize: TEXTO.miudo, color: CORES.tenue, marginBottom: ESPACO[2] }}>
-        {eu ? `Você entrou como ${eu.usuario} · ${ROTULO_DO_PAPEL[eu.papel] || eu.papel}` : "Acesso"}
+    <div>
+      <div style={{ fontSize: TEXTO.corpo, color: CORES.tinta, lineHeight: 1.3 }}>
+        {(eu && eu.nome) || (eu && eu.usuario) || "Acesso"}
+      </div>
+      <div style={{ fontSize: TEXTO.miudo, color: CORES.tenue, marginTop: 2, marginBottom: ESPACO[3] }}>
+        {eu ? `${eu.usuario} · ${ROTULO_DO_PAPEL[eu.papel] || eu.papel}` : "não consegui confirmar quem está logado"}
       </div>
 
       {aberto ? (
@@ -3441,34 +3538,40 @@ function MeuAcesso({ eu, avisar }) {
             onChange={(e) => setAtual(soDigitos(e.target.value))}
             placeholder="PIN atual"
             inputMode="numeric"
-            style={inputStyle}
+            autoFocus
+            style={{ ...inputStyle, fontSize: TEXTO.apoio }}
           />
           <input
             value={novo}
             onChange={(e) => setNovo(soDigitos(e.target.value))}
             placeholder="PIN novo"
             inputMode="numeric"
-            style={inputStyle}
+            style={{ ...inputStyle, fontSize: TEXTO.apoio }}
           />
           <div style={{ display: "flex", gap: ESPACO[2] }}>
             <button
               onClick={trocar}
               disabled={ocupado || atual.length !== DIGITOS_DO_PIN || novo.length !== DIGITOS_DO_PIN}
-              style={{ ...btnPrimary, opacity: ocupado ? 0.5 : 1 }}
+              style={{
+                ...btnPrimary,
+                padding: "11px 12px",
+                fontSize: TEXTO.apoio,
+                opacity: ocupado || atual.length !== DIGITOS_DO_PIN || novo.length !== DIGITOS_DO_PIN ? 0.5 : 1,
+              }}
             >
               Trocar
             </button>
-            <button onClick={() => setAberto(false)} style={btnSecondary}>
+            <button onClick={() => setAberto(false)} style={{ ...btnSecondary, padding: "11px 12px", fontSize: TEXTO.apoio }}>
               Cancelar
             </button>
           </div>
         </div>
       ) : (
-        <div style={{ display: "flex", gap: ESPACO[2] }}>
-          <button onClick={() => setAberto(true)} style={btnDiscreto}>
+        <div style={{ display: "flex", flexDirection: "column", gap: ESPACO[2] }}>
+          <button onClick={() => setAberto(true)} style={botao}>
             Trocar meu PIN
           </button>
-          <button onClick={sair} style={btnDiscreto}>
+          <button onClick={sair} style={{ ...botao, color: CORES.alerta }}>
             Sair deste aparelho
           </button>
         </div>
