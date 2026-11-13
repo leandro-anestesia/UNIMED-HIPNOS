@@ -427,32 +427,67 @@ export default function Home() {
     loadCadastros();
   }, [loadEntries, loadCadastros]);
 
-  // Quem sou eu. Se o cookie não vale mais — aparelho derrubado, acesso
-  // desativado —, a tela não fica quebrada: vai para a entrada.
-  useEffect(() => {
-    let vivo = true;
-    (async () => {
-      try {
-        const r = await fetch("/api/acesso/eu");
-        const data = await r.json();
-        if (!vivo) return;
-        if (data.logado) {
-          setAcesso({ usuario: data.usuario, nome: data.nome, papel: data.papel, pinTrocado: data.pinTrocado });
-        } else if (data.tranca === false) {
-          // Sem tranca configurada ninguém entra, e nem há o que esconder.
-          setAcesso(null);
-        } else {
-          window.location.href = "/entrar";
-        }
-      } catch (e) {
-        console.error(e);
-        if (vivo) setAcesso(null);
+  /**
+   * Quem sou eu — e ainda sou?
+   *
+   * Se o cookie não vale mais (aparelho derrubado, acesso desativado), a tela
+   * não fica quebrada: vai para a entrada.
+   *
+   * Falha de rede NÃO põe ninguém para fora: `catch` deixa o papel como
+   * desconhecido e a tela mostra tudo, porque quem recusa de verdade é o
+   * servidor. Uma oscilação de sinal no corredor do centro cirúrgico não pode
+   * expulsar quem está lançando.
+   */
+  const conferirAcesso = useCallback(async () => {
+    try {
+      const r = await fetch("/api/acesso/eu");
+      const data = await r.json();
+      if (data.logado) {
+        setAcesso({ usuario: data.usuario, nome: data.nome, papel: data.papel, pinTrocado: data.pinTrocado });
+      } else if (data.tranca === false) {
+        // Sem tranca configurada ninguém entra, e nem há o que esconder.
+        setAcesso(null);
+      } else {
+        window.location.href = "/entrar";
       }
-    })();
-    return () => {
-      vivo = false;
-    };
+    } catch (e) {
+      console.error(e);
+      setAcesso(null);
+    }
   }, []);
+
+  useEffect(() => {
+    conferirAcesso();
+  }, [conferirAcesso]);
+
+  /**
+   * E de novo toda vez que o app volta do congelador.
+   *
+   * Sem isto, a tranca parecia não valer para quem já tinha o app aberto. O
+   * iPhone não recarrega uma página que volta da memória — ele devolve a tela
+   * exatamente como estava, com o React e os dados já carregados, e sem pedir
+   * nada ao servidor. O app aparecia inteiro, com os registros de antes, como
+   * se a pessoa continuasse logada; o servidor já recusava qualquer gravação,
+   * mas o que estava na tela continuava na tela.
+   *
+   * `pageshow` com `persisted` é exatamente esse retorno; `visibilitychange` é
+   * o app voltando a ser o aplicativo da frente. Nos dois casos, uma pergunta
+   * ao servidor, que é barata, e quem não está mais logado vai para o PIN.
+   */
+  useEffect(() => {
+    function aoVoltar(evento) {
+      if (evento.type === "pageshow" && !evento.persisted) return;
+      if (evento.type === "visibilitychange" && document.visibilityState !== "visible") return;
+      conferirAcesso();
+    }
+
+    window.addEventListener("pageshow", aoVoltar);
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => {
+      window.removeEventListener("pageshow", aoVoltar);
+      document.removeEventListener("visibilitychange", aoVoltar);
+    };
+  }, [conferirAcesso]);
 
   // A recusa da tela da secretaria chega por aqui: o middleware devolve para
   // cá com `?negado`, em vez de deixar a tela em branco sem explicação.
@@ -2179,6 +2214,11 @@ export default function Home() {
                       {estadoDe("executado", e.executado) === "incompleto" && (
                         <span style={{ color: CORES.avisoTinta, fontSize: TEXTO.miudo, fontWeight: 700 }}>
                           INCOMPLETO
+                        </span>
+                      )}
+                      {estadoDe("executado", e.executado) === "verificado" && (
+                        <span style={{ color: CORES.laranjaTinta, fontSize: TEXTO.miudo, fontWeight: 700 }}>
+                          VERIFICADO
                         </span>
                       )}
                       <span style={{ color: CORES.tenue, fontSize: TEXTO.miudo }}>{aberto ? "▲" : "▼"}</span>
