@@ -1,4 +1,5 @@
 import { aprenderProcedimentos } from "../../lib/cadastros";
+import { pendenciasDoEspelhamento } from "../../lib/espelho";
 import { sheetsEnabled, syncTudo, pullDaPlanilha } from "../../lib/sheets";
 import { normalizarRegistro, mudouNaNormalizacao } from "../../lib/registro";
 import { rotuloDaFalha } from "../../lib/modelos";
@@ -34,10 +35,16 @@ export default async function handler(req, res) {
     }
 
     // Primeiro traz o que foi editado direto na planilha, depois reescreve.
+    //
+    // O que ainda está na fila do espelhamento fica protegido: é mudança feita
+    // no app que ainda não chegou à planilha, e lê-la de lá traria o valor
+    // velho por cima. Sem isto, apertar 🔄 no mesmo segundo em que alguém
+    // marca algo no app desfaz a marcação dessa pessoa.
     let mudancas = [];
     let recusadas = [];
     try {
-      const resultado = await pullDaPlanilha(entries);
+      const { ids: aindaNaFila } = await pendenciasDoEspelhamento();
+      const resultado = await pullDaPlanilha(entries, aindaNaFila);
       recusadas = resultado.recusadas;
       if (resultado.mudancas.length > 0) {
         entries = resultado.entries;
