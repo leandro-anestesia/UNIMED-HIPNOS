@@ -1,6 +1,7 @@
 import { nomeCurtoDoConvenio, semCodigoNaFrente } from "../../lib/convenios";
 import { PROCEDIMENTOS_IGNORADOS, semOsIgnorados } from "../../lib/procedimentos";
 import { semTratamento } from "../../lib/texto";
+import { exigir } from "../../lib/guarda";
 
 export const config = {
   api: {
@@ -141,6 +142,12 @@ function nomeDoConvenio(valor) {
 }
 
 export default async function handler(req, res) {
+  // Sem acesso, nada. A conta da Anthropic é da equipe: quem descobrisse
+  // este endereço mandaria fotos para ler por ela, e isso só apareceria na
+  // fatura.
+  const pessoa = await exigir(req, res);
+  if (!pessoa) return;
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }

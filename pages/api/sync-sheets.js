@@ -4,8 +4,13 @@ import { sheetsEnabled, syncTudo, pullDaPlanilha } from "../../lib/sheets";
 import { normalizarRegistro, mudouNaNormalizacao } from "../../lib/registro";
 import { rotuloDaFalha } from "../../lib/modelos";
 import { gravarTudo, lerTudo } from "../../lib/registros";
+import { exigir } from "../../lib/guarda";
 
 export default async function handler(req, res) {
+  // Sem acesso, nada: isto lê e reescreve as planilhas do controle.
+  const pessoa = await exigir(req, res);
+  if (!pessoa) return;
+
   if (req.method !== "POST" && req.method !== "GET") {
     res.setHeader("Allow", ["GET", "POST"]);
     return res.status(405).json({ error: "Método não permitido" });

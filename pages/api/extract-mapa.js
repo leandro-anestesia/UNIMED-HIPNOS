@@ -1,5 +1,6 @@
 import { semOsIgnorados } from "../../lib/procedimentos";
 import { normalizarTexto, semTratamento } from "../../lib/texto";
+import { exigir } from "../../lib/guarda";
 
 export const config = {
   api: {
@@ -87,6 +88,12 @@ function ehRecado(registro) {
 }
 
 export default async function handler(req, res) {
+  // Sem acesso, nada. A conta da Anthropic é da equipe: quem descobrisse
+  // este endereço mandaria fotos para ler por ela, e isso só apareceria na
+  // fatura.
+  const pessoa = await exigir(req, res);
+  if (!pessoa) return;
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }

@@ -1,5 +1,6 @@
 import { TIPOS_DE_CADASTRO } from "../../lib/campos";
 import { acrescentar, comoGuardar, lerCadastros, remover } from "../../lib/cadastros";
+import { exigir } from "../../lib/guarda";
 
 /**
  * As listas que alimentam o autocompletar.
@@ -9,6 +10,11 @@ import { acrescentar, comoGuardar, lerCadastros, remover } from "../../lib/cadas
  * validar o tipo, escolher o verbo e responder.
  */
 export default async function handler(req, res) {
+  // Sem acesso, nada: a lista diz quem são os cirurgiões e os pacientes da
+  // equipe.
+  const pessoa = await exigir(req, res);
+  if (!pessoa) return;
+
   try {
     if (req.method === "GET") {
       return res.status(200).json(await lerCadastros());

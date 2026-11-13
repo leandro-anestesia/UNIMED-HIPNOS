@@ -24,6 +24,17 @@ import { chaveDeOrdem, ordenarRegistros } from "../lib/ordem";
 import { modeloDoRegistro } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
 import {
+  DIGITOS_DO_PIN,
+  PAPEIS,
+  ROTULO_DO_PAPEL,
+  podeApagarRegistro,
+  podeConferir,
+  podeGerirAcesso,
+  podeVerSecretaria,
+  usuarioComMeio,
+  usuarioDoNome,
+} from "../lib/acesso";
+import {
   CAMPOS_DO_REGISTRO,
   CAMPOS_MANUAIS,
   CAMPOS_QUE_APRENDEM,
@@ -290,6 +301,38 @@ export default function Home() {
   const [sincronizando, setSincronizando] = useState(false);
 
   /**
+   * Quem está usando o app, e o que o papel dele permite.
+   *
+   * O cookie é `HttpOnly`, então a página não consegue lê-lo: quem diz é o
+   * servidor, em `/api/acesso/eu`. Três estados, e a diferença importa:
+   *
+   * - `undefined`: ainda não sei. Esconde o que é da conferência por um
+   *   instante, porque mostrar e tirar é pior do que aparecer um pouco depois.
+   * - `null`: não consegui saber (rota fora do ar, resposta estranha). Aí a
+   *   tela mostra tudo: travar a equipe por causa de uma chamada que falhou
+   *   seria o pior dos dois erros, e quem decide de verdade é o servidor, que
+   *   recusa a ação mesmo com o botão na tela.
+   * - objeto: o papel manda.
+   */
+  const [acesso, setAcesso] = useState(undefined);
+
+  const permissao = useCallback(
+    (teste) => {
+      if (acesso === undefined) return false;
+      if (acesso === null) return true;
+      return teste(acesso.papel);
+    },
+    [acesso]
+  );
+
+  const podeConferirAqui = permissao(podeConferir);
+  const podeApagarAqui = permissao(podeApagarRegistro);
+  const veSecretaria = permissao(podeVerSecretaria);
+  // O mestre precisa de papel conhecido: a seção de Acesso aparecer para quem
+  // não é mestre só geraria recusa do servidor e confusão na tela.
+  const ehMestre = Boolean(acesso && acesso.papel && podeGerirAcesso(acesso.papel));
+
+  /**
    * O aviso que desliza do rodapé, no lugar do `alert()`.
    *
    * `alert()` trava a tela, exige um toque para sumir e tem cara de erro de
@@ -344,6 +387,12 @@ export default function Home() {
   const loadEntries = useCallback(async () => {
     try {
       const r = await fetch("/api/entries");
+      if (r.status === 401) {
+        // O cookie não vale mais. Mostrar "nenhum registro" aqui faria o
+        // anestesiologista concluir que o lançamento dele sumiu.
+        window.location.href = "/entrar";
+        return;
+      }
       if (!r.ok) {
         setFalhaDeCarga(await mensagemDeErro(r));
         return;
@@ -377,6 +426,44 @@ export default function Home() {
     loadEntries();
     loadCadastros();
   }, [loadEntries, loadCadastros]);
+
+  // Quem sou eu. Se o cookie não vale mais — aparelho derrubado, acesso
+  // desativado —, a tela não fica quebrada: vai para a entrada.
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/acesso/eu");
+        const data = await r.json();
+        if (!vivo) return;
+        if (data.logado) {
+          setAcesso({ usuario: data.usuario, nome: data.nome, papel: data.papel, pinTrocado: data.pinTrocado });
+        } else if (data.tranca === false) {
+          // Sem tranca configurada ninguém entra, e nem há o que esconder.
+          setAcesso(null);
+        } else {
+          window.location.href = "/entrar";
+        }
+      } catch (e) {
+        console.error(e);
+        if (vivo) setAcesso(null);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  // A recusa da tela da secretaria chega por aqui: o middleware devolve para
+  // cá com `?negado`, em vez de deixar a tela em branco sem explicação.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("negado") === "secretaria") {
+      avisar("A área de conferência é da secretária e do mestre.", "erro");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [avisar]);
 
   /**
    * O local não é lembrado entre uma abertura e outra, de propósito.
@@ -1797,6 +1884,10 @@ export default function Home() {
                   Na planilha a ordem não muda — lá o Executado continua sendo a
                   primeira coluna, que é como a conferência lê o mês. A ordem das
                   colunas vem de `lib/campos.js`, e nada aqui a toca. */}
+              {/* Para o usuário comum os dois estados não aparecem: quem
+                  marca executado é quem confere. E não é só a tela — o servidor
+                  descarta esses campos de quem não pode mexer neles. */}
+              {podeConferirAqui && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>Executado</span>
                 <Escolha
@@ -1806,10 +1897,11 @@ export default function Home() {
                   grande
                 />
               </div>
+              )}
 
               {/* O complementar tem o próprio ciclo de cobrança, e só na
                   conferência da Unimed ele é acompanhado. */}
-              {modeloDoRegistro(draft) === "convenio" && (
+              {podeConferirAqui && modeloDoRegistro(draft) === "convenio" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
                     PC Executado
@@ -2009,13 +2101,23 @@ export default function Home() {
                         cartão que abre — `stopPropagation`, senão marcar
                         também abriria o registro. Não vai para a planilha: é
                         controle de quem confere, não dado da cirurgia. */}
+                    {/* Para o usuário comum ela fica visível e travada, e não
+                        escondida: o cinza do cartão diz que a secretária já
+                        conferiu, e isso é informação útil para quem lança. */}
                     <input
                       type="checkbox"
                       checked={e.conferido === true}
+                      disabled={!podeConferirAqui}
                       onClick={(ev) => ev.stopPropagation()}
                       onChange={(ev) => updateConferido(e, ev.target.checked)}
-                      title="Conferido"
-                      style={{ width: 20, height: 20, flexShrink: 0, cursor: "pointer", accentColor: CORES.principal }}
+                      title={podeConferirAqui ? "Conferido" : "Quem confere é a secretária"}
+                      style={{
+                        width: 20,
+                        height: 20,
+                        flexShrink: 0,
+                        cursor: podeConferirAqui ? "pointer" : "default",
+                        accentColor: CORES.principal,
+                      }}
                     />
 
                     <div style={{ minWidth: 0, flex: 1 }}>
@@ -2103,7 +2205,9 @@ export default function Home() {
                         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                           <button onClick={() => setViewingEntry(e)} style={iconBtn} title="Ver tudo">⋯</button>
                           <button onClick={() => startEdit(e)} style={iconBtn}>✎</button>
-                          <button onClick={() => deleteEntry(e.id)} style={{ ...iconBtn, color: CORES.alerta }}>🗑</button>
+                          {podeApagarAqui && (
+                            <button onClick={() => deleteEntry(e.id)} style={{ ...iconBtn, color: CORES.alerta }}>🗑</button>
+                          )}
                         </div>
                       </div>
 
@@ -2111,11 +2215,13 @@ export default function Home() {
                         <div style={{ fontSize: TEXTO.apoio, flex: 1, paddingRight: 8 }}>
                           {(e.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS) || "(sem procedimento)"}
                         </div>
-                        <Escolha
-                          campo="executado"
-                          valor={e.executado}
-                          onEscolher={(estado) => updateExecutado(e, estado)}
-                        />
+                        {podeConferirAqui && (
+                          <Escolha
+                            campo="executado"
+                            valor={e.executado}
+                            onEscolher={(estado) => updateExecutado(e, estado)}
+                          />
+                        )}
                       </div>
                     </>
                   )}
@@ -2184,9 +2290,12 @@ export default function Home() {
               onRemove={(nome) => removeCadastro("recebedores", nome)}
             />
 
+            {ehMestre && <SecaoDeAcesso cadastros={cadastros} avisar={avisar} eu={acesso} />}
+
             {/* A área de conferência é tela de computador, e não entra na barra
                 de abas do celular — ela atrapalharia quem lança. Fica aqui, no
                 fim dos ajustes, que é onde quem administra já vem. */}
+            {veSecretaria && (
             <a
               href="/secretaria"
               style={{
@@ -2205,6 +2314,9 @@ export default function Home() {
             >
               📊 Área de conferência
             </a>
+            )}
+
+            <MeuAcesso eu={acesso} avisar={avisar} />
           </div>
         )}
       </div>
@@ -2883,3 +2995,444 @@ function Field({ label, children }) {
 }
 
 
+
+/**
+ * Monta o usuário de cada nome do cadastro, resolvendo homônimos.
+ *
+ * Dois nomes que dariam o mesmo usuário ganham a inicial do meio
+ * (`leandro.m.correa`) em vez de um número: número não diz a ninguém qual é
+ * qual. O campo continua editável na tela, porque sempre haverá um nome que
+ * nenhuma regra resolve bem.
+ */
+function usuariosDoCadastro(nomes, jaCadastrados) {
+  const quantos = new Map();
+  for (const nome of nomes) {
+    const u = usuarioDoNome(nome);
+    quantos.set(u, (quantos.get(u) || 0) + 1);
+  }
+
+  return nomes
+    .map((nome) => {
+      const base = usuarioDoNome(nome);
+      const repete = (quantos.get(base) || 0) > 1 || jaCadastrados.has(base);
+      const usuario = repete ? usuarioComMeio(nome) : base;
+      return { nome, usuario, jaTem: jaCadastrados.has(usuario) };
+    })
+    .filter((x) => x.usuario);
+}
+
+/**
+ * A seção de Acesso, só do mestre.
+ *
+ * A lista de anestesiologistas não está no código: ela mora no cadastro, que o
+ * app já carrega. Então é daqui que a equipe entra no acesso — com o usuário já
+ * montado a partir do nome e um PIN inicial único, que cada um troca depois.
+ */
+function SecaoDeAcesso({ cadastros, avisar, eu }) {
+  const [pessoas, setPessoas] = useState(null);
+  const [pinInicial, setPinInicial] = useState("");
+  const [abrirTrazer, setAbrirTrazer] = useState(false);
+  const [escolhidos, setEscolhidos] = useState({}); // usuario editado, por nome
+  const [marcados, setMarcados] = useState({});
+  const [ocupado, setOcupado] = useState(false);
+  const [pinDe, setPinDe] = useState(null); // usuário cujo PIN está sendo zerado
+  const [pinNovo, setPinNovo] = useState("");
+
+  const carregar = useCallback(async () => {
+    try {
+      const r = await fetch("/api/acesso/pessoas");
+      if (!r.ok) throw new Error(await mensagemDeErro(r));
+      setPessoas(await r.json());
+    } catch (e) {
+      console.error(e);
+      avisar("Não consegui ler a lista de acessos.", "erro");
+      setPessoas([]);
+    }
+  }, [avisar]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const jaCadastrados = useMemo(
+    () => new Set((pessoas || []).map((p) => p.usuario)),
+    [pessoas]
+  );
+
+  const candidatos = useMemo(
+    () => usuariosDoCadastro(cadastros.anestesistas || [], jaCadastrados),
+    [cadastros.anestesistas, jaCadastrados]
+  );
+
+  const paraCriar = candidatos.filter((c) => marcados[c.nome] && !c.jaTem);
+
+  async function criarMarcados() {
+    if (ocupado) return;
+    if (!/^\d{6}$/.test(pinInicial)) {
+      avisar("O PIN inicial precisa ter 6 dígitos.", "erro");
+      return;
+    }
+    if (paraCriar.length === 0) {
+      avisar("Marque quem você quer criar.", "erro");
+      return;
+    }
+
+    setOcupado(true);
+    try {
+      const r = await fetch("/api/acesso/pessoas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pessoas: paraCriar.map((c) => ({
+            nome: c.nome,
+            usuario: escolhidos[c.nome] || c.usuario,
+            papel: "equipe",
+            pin: pinInicial,
+          })),
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "falhou");
+
+      const recusadas = data.recusadas || [];
+      avisar(
+        recusadas.length === 0
+          ? `${data.criadas.length} ${data.criadas.length === 1 ? "pessoa criada" : "pessoas criadas"} com o PIN inicial.`
+          : `${data.criadas.length} criadas.\nNão entraram:\n` +
+              recusadas.map((x) => `· ${x.nome || x.usuario} — ${x.motivo}`).join("\n"),
+        recusadas.length === 0 ? "ok" : "erro"
+      );
+      setMarcados({});
+      await carregar();
+    } catch (e) {
+      console.error(e);
+      avisar("Não consegui criar os acessos. Tente de novo.", "erro");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function mudar(usuario, mudancas, oQue) {
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      const r = await fetch("/api/acesso/pessoas", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuario, ...mudancas }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "falhou");
+      avisar(oQue);
+      await carregar();
+      return true;
+    } catch (e) {
+      console.error(e);
+      avisar(`Não consegui ${oQue.toLowerCase()}: ${e.message}`, "erro");
+      return false;
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function apagar(usuario) {
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      const r = await fetch(`/api/acesso/pessoas?usuario=${encodeURIComponent(usuario)}`, { method: "DELETE" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "falhou");
+      avisar("Acesso removido.");
+      await carregar();
+    } catch (e) {
+      console.error(e);
+      avisar(`Não consegui remover: ${e.message}`, "erro");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  const linha = {
+    border: `1px solid ${CORES.borda}`,
+    borderRadius: 6,
+    padding: ESPACO[3],
+    background: "white",
+    display: "flex",
+    flexDirection: "column",
+    gap: ESPACO[2],
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: TEXTO.miudo, letterSpacing: "0.1em", textTransform: "uppercase", color: CORES.suave, marginBottom: 10 }}>
+        Acesso
+      </div>
+
+      <div style={{ fontSize: TEXTO.miudo, color: CORES.tenue, marginBottom: ESPACO[3], lineHeight: 1.5 }}>
+        Quem pode entrar no app, e com que papel. A secretária vê tudo, confere e apaga; a
+        equipe lança e corrige, sem os botões de executado e sem a lixeira.
+      </div>
+
+      {/* ── Trazer a equipe do cadastro ───────────────────────────────────── */}
+      <button
+        onClick={() => setAbrirTrazer((v) => !v)}
+        style={{ ...btnSecondary, width: "100%", padding: "10px 12px", fontSize: TEXTO.apoio, marginBottom: ESPACO[3] }}
+      >
+        {abrirTrazer ? "▴ Fechar" : "▾ Trazer do cadastro de anestesiologistas"}
+      </button>
+
+      {abrirTrazer && (
+        <div style={{ ...linha, marginBottom: ESPACO[3] }}>
+          <div style={{ fontSize: TEXTO.apoio, color: CORES.suave, lineHeight: 1.45 }}>
+            Marque quem entra. O usuário sai do nome; dá para corrigir antes de criar. O PIN
+            inicial é o mesmo para todos — cada um troca o seu no app depois.
+          </div>
+
+          <input
+            value={pinInicial}
+            onChange={(e) => setPinInicial(e.target.value.replace(/\D/g, "").slice(0, DIGITOS_DO_PIN))}
+            placeholder={`PIN inicial (${DIGITOS_DO_PIN} dígitos)`}
+            inputMode="numeric"
+            style={inputStyle}
+          />
+
+          {candidatos.length === 0 && (
+            <div style={{ fontSize: TEXTO.apoio, color: CORES.tenue }}>
+              O cadastro de anestesiologistas está vazio.
+            </div>
+          )}
+
+          {candidatos.map((c) => (
+            <div key={c.nome} style={{ display: "flex", alignItems: "center", gap: ESPACO[2] }}>
+              <input
+                type="checkbox"
+                disabled={c.jaTem}
+                checked={Boolean(marcados[c.nome]) && !c.jaTem}
+                onChange={(e) => setMarcados((m) => ({ ...m, [c.nome]: e.target.checked }))}
+                style={{ width: 20, height: 20, flexShrink: 0, accentColor: CORES.principal }}
+              />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: TEXTO.apoio, color: c.jaTem ? CORES.tenue : CORES.tinta }}>{c.nome}</div>
+                {c.jaTem ? (
+                  <div style={{ fontSize: TEXTO.miudo, color: CORES.tenue }}>já tem acesso: {c.usuario}</div>
+                ) : (
+                  <input
+                    value={escolhidos[c.nome] !== undefined ? escolhidos[c.nome] : c.usuario}
+                    onChange={(e) =>
+                      setEscolhidos((x) => ({ ...x, [c.nome]: e.target.value.toLowerCase().replace(/\s/g, "") }))
+                    }
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    style={{ ...inputStyle, fontSize: TEXTO.apoio, padding: "6px 8px", marginTop: 2 }}
+                  />
+                )}
+              </div>
+            </div>
+          ))}
+
+          <button
+            onClick={criarMarcados}
+            disabled={ocupado || paraCriar.length === 0}
+            style={{ ...btnPrimary, opacity: ocupado || paraCriar.length === 0 ? 0.5 : 1 }}
+          >
+            {paraCriar.length === 0 ? "Criar os marcados" : `Criar ${paraCriar.length}`}
+          </button>
+        </div>
+      )}
+
+      {/* ── Quem já tem acesso ────────────────────────────────────────────── */}
+      {pessoas === null ? (
+        <div style={{ fontSize: TEXTO.apoio, color: CORES.tenue }}>…</div>
+      ) : pessoas.length === 0 ? (
+        <div style={{ fontSize: TEXTO.apoio, color: CORES.tenue }}>Ninguém cadastrado ainda.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: ESPACO[2] }}>
+          {pessoas.map((p) => (
+            <div key={p.usuario} style={{ ...linha, opacity: p.ativo ? 1 : 0.55 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: ESPACO[2] }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: TEXTO.corpo }}>
+                    {p.usuario}
+                    {p.usuario === (eu && eu.usuario) ? " (você)" : ""}
+                  </div>
+                  <div style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
+                    {p.nome || "(sem nome)"}
+                    {p.ativo ? "" : " · desativado"}
+                    {p.pinTrocado ? "" : " · PIN inicial"}
+                  </div>
+                </div>
+                <select
+                  value={p.papel}
+                  onChange={(e) => mudar(p.usuario, { papel: e.target.value }, "Papel trocado")}
+                  style={{ ...inputStyle, width: "auto", fontSize: TEXTO.apoio, padding: "6px 8px" }}
+                >
+                  {PAPEIS.map((papel) => (
+                    <option key={papel} value={papel}>
+                      {ROTULO_DO_PAPEL[papel]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {pinDe === p.usuario ? (
+                <div style={{ display: "flex", gap: ESPACO[2] }}>
+                  <input
+                    value={pinNovo}
+                    onChange={(e) => setPinNovo(e.target.value.replace(/\D/g, "").slice(0, DIGITOS_DO_PIN))}
+                    placeholder="PIN novo"
+                    inputMode="numeric"
+                    autoFocus
+                    style={{ ...inputStyle, flex: 1, fontSize: TEXTO.apoio }}
+                  />
+                  <button
+                    onClick={async () => {
+                      const foi = await mudar(p.usuario, { pin: pinNovo }, "PIN trocado");
+                      if (foi) {
+                        setPinDe(null);
+                        setPinNovo("");
+                      }
+                    }}
+                    disabled={ocupado || pinNovo.length !== DIGITOS_DO_PIN}
+                    style={{ ...btnPrimary, flex: "0 0 auto", padding: "8px 12px", opacity: pinNovo.length === DIGITOS_DO_PIN ? 1 : 0.5 }}
+                  >
+                    Trocar
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPinDe(null);
+                      setPinNovo("");
+                    }}
+                    style={{ ...btnSecondary, flex: "0 0 auto", padding: "8px 12px" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: ESPACO[1], flexWrap: "wrap" }}>
+                  <button onClick={() => setPinDe(p.usuario)} style={{ ...btnDiscreto, flex: "0 0 auto" }}>
+                    Zerar PIN
+                  </button>
+                  <button
+                    onClick={() => mudar(p.usuario, { derrubarAparelhos: true }, "Aparelhos derrubados")}
+                    style={{ ...btnDiscreto, flex: "0 0 auto" }}
+                  >
+                    Sair de todos os aparelhos
+                  </button>
+                  <button
+                    onClick={() => mudar(p.usuario, { ativo: !p.ativo }, p.ativo ? "Desativado" : "Reativado")}
+                    style={{ ...btnDiscreto, flex: "0 0 auto" }}
+                  >
+                    {p.ativo ? "Desativar" : "Reativar"}
+                  </button>
+                  <button
+                    onClick={() => apagar(p.usuario)}
+                    style={{ ...btnDiscreto, flex: "0 0 auto", color: CORES.alerta }}
+                  >
+                    🗑 Remover
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Trocar meu PIN", para qualquer papel.
+ *
+ * Existe porque o PIN inicial é o mesmo para a equipe inteira: trocar o seu é o
+ * que faz dele um PIN seu. Trocar derruba os outros aparelhos — se o antigo
+ * vazou, o cookie que ele gerou vazou também —, e este aparelho recebe um
+ * cookie novo na mesma resposta.
+ */
+function MeuAcesso({ eu, avisar }) {
+  const [aberto, setAberto] = useState(false);
+  const [atual, setAtual] = useState("");
+  const [novo, setNovo] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+
+  async function trocar() {
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      const r = await fetch("/api/acesso/pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinAtual: atual, pinNovo: novo }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "falhou");
+      avisar("PIN trocado. Os outros aparelhos vão pedir o novo.");
+      setAberto(false);
+      setAtual("");
+      setNovo("");
+    } catch (e) {
+      avisar(`Não consegui trocar o PIN: ${e.message}`, "erro");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function sair() {
+    try {
+      await fetch("/api/acesso/sair", { method: "POST" });
+    } catch (e) {
+      console.error(e);
+    }
+    window.location.href = "/entrar";
+  }
+
+  const soDigitos = (v) => v.replace(/\D/g, "").slice(0, DIGITOS_DO_PIN);
+
+  return (
+    <div style={{ marginTop: ESPACO[6], paddingTop: ESPACO[4], borderTop: `1px solid ${CORES.borda}` }}>
+      <div style={{ fontSize: TEXTO.miudo, color: CORES.tenue, marginBottom: ESPACO[2] }}>
+        {eu ? `Você entrou como ${eu.usuario} · ${ROTULO_DO_PAPEL[eu.papel] || eu.papel}` : "Acesso"}
+      </div>
+
+      {aberto ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: ESPACO[2] }}>
+          <input
+            value={atual}
+            onChange={(e) => setAtual(soDigitos(e.target.value))}
+            placeholder="PIN atual"
+            inputMode="numeric"
+            style={inputStyle}
+          />
+          <input
+            value={novo}
+            onChange={(e) => setNovo(soDigitos(e.target.value))}
+            placeholder="PIN novo"
+            inputMode="numeric"
+            style={inputStyle}
+          />
+          <div style={{ display: "flex", gap: ESPACO[2] }}>
+            <button
+              onClick={trocar}
+              disabled={ocupado || atual.length !== DIGITOS_DO_PIN || novo.length !== DIGITOS_DO_PIN}
+              style={{ ...btnPrimary, opacity: ocupado ? 0.5 : 1 }}
+            >
+              Trocar
+            </button>
+            <button onClick={() => setAberto(false)} style={btnSecondary}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: ESPACO[2] }}>
+          <button onClick={() => setAberto(true)} style={btnDiscreto}>
+            Trocar meu PIN
+          </button>
+          <button onClick={sair} style={btnDiscreto}>
+            Sair deste aparelho
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
