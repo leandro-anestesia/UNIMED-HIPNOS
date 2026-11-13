@@ -2217,7 +2217,7 @@ export default function Home() {
                         </span>
                       )}
                       {estadoDe("executado", e.executado) === "verificado" && (
-                        <span style={{ color: CORES.laranjaTinta, fontSize: TEXTO.miudo, fontWeight: 700 }}>
+                        <span style={{ color: CORES.suave, fontSize: TEXTO.miudo, fontWeight: 700 }}>
                           VERIFICADO
                         </span>
                       )}
