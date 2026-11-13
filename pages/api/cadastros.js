@@ -15,11 +15,17 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
-      const { tipo, nome } = req.body || {};
+      // `nomes` existe para o salvamento não virar uma requisição por nome: uma
+      // guia com oito procedimentos novos eram oito idas ao servidor, em fila,
+      // com o formulário aberto esperando. Agora é uma, com uma trava só.
+      const { tipo, nome, nomes } = req.body || {};
       if (!TIPOS_DE_CADASTRO.includes(tipo)) return res.status(400).json({ error: "tipo inválido" });
-      if (!comoGuardar(tipo, nome)) return res.status(400).json({ error: "nome é obrigatório" });
 
-      const { cadastros } = await acrescentar(tipo, [nome]);
+      const pedidos = Array.isArray(nomes) ? nomes : [nome];
+      const validos = pedidos.filter((n) => comoGuardar(tipo, n));
+      if (validos.length === 0) return res.status(400).json({ error: "nome é obrigatório" });
+
+      const { cadastros } = await acrescentar(tipo, validos);
       return res.status(200).json(cadastros);
     }
 

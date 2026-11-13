@@ -412,12 +412,14 @@ export default function Home() {
     setMesSelecionado(meses.some((m) => m.chave === atual) ? atual : meses[0].chave);
   }, [meses, mesSelecionado]);
 
+  /** Um nome ou vários; vários vão numa requisição só. */
   async function addCadastro(tipo, nome, { avisarFalha = true } = {}) {
     try {
+      const corpo = Array.isArray(nome) ? { tipo, nomes: nome } : { tipo, nome };
       const r = await fetch("/api/cadastros", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo, nome }),
+        body: JSON.stringify(corpo),
       });
       if (!r.ok) throw new Error(await mensagemDeErro(r));
       const data = await r.json();
@@ -459,25 +461,32 @@ export default function Home() {
    * um nome não pode virar aviso de erro num lançamento que deu certo.
    */
   async function aprenderCadastros(dados) {
-    const guardar = async (tipo, valor) => {
+    // Junta tudo antes de mandar: o salvamento espera por isto, e uma guia com
+    // oito procedimentos novos eram oito requisições em fila com o formulário
+    // aberto. Agora é uma por tipo, e nenhuma quando não há o que aprender.
+    const novos = {};
+    const anotar = (tipo, valor) => {
       const limpo = (valor || "").toString().trim();
       if (!limpo) return;
-      const jaTem = (cadastros[tipo] || []).some(
-        (n) => normalizarTexto(n) === normalizarTexto(limpo)
-      );
-      if (jaTem) return;
-      await addCadastro(tipo, limpo, { avisarFalha: false });
+      const igual = (n) => normalizarTexto(n) === normalizarTexto(limpo);
+      if ((cadastros[tipo] || []).some(igual)) return;
+      const lista = novos[tipo] || (novos[tipo] = []);
+      if (!lista.some(igual)) lista.push(limpo);
     };
 
     for (const f of CAMPOS_QUE_APRENDEM) {
-      await guardar(f.cadastroKey, dados[f.key]);
+      anotar(f.cadastroKey, dados[f.key]);
     }
 
     // O procedimento é lista, e não um campo de texto: cada linha gravada vira
     // uma entrada do cadastro. É daqui que sai o autocompletar do lançamento
     // manual — inclusive com os códigos TUSS que entraram pelas guias lidas.
     for (const descricao of dados.procedimentos || []) {
-      await guardar("procedimentos", descricao);
+      anotar("procedimentos", descricao);
+    }
+
+    for (const [tipo, nomes] of Object.entries(novos)) {
+      await addCadastro(tipo, nomes, { avisarFalha: false });
     }
   }
 
