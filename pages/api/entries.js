@@ -10,6 +10,9 @@ import {
   pendenciasDoEspelhamento,
 } from "../../lib/espelho";
 import { normalizarRegistro } from "../../lib/registro";
+import { CAMPOS_DA_CONFERENCIA, podeApagarRegistro, podeConferir } from "../../lib/acesso";
+import { exigir } from "../../lib/guarda";
+import { padraoDe } from "../../lib/estados";
 import {
   acrescentar,
   acrescentarVarios,
@@ -19,6 +22,7 @@ import {
   lerAno,
   lerMes,
   lerTudo,
+  mesDe,
   mesesComRegistro,
 } from "../../lib/registros";
 
@@ -201,7 +205,43 @@ async function lancarLote(brutos, res) {
   return res.status(200).json({ gravados: gravados.length, duplicados });
 }
 
+/**
+ * Os campos da conferência, do usuário comum, são ignorados.
+ *
+ * Ignorados, e não motivo para recusar a requisição: o app manda o registro
+ * inteiro ao corrigir um nome, e recusar tudo quebraria justamente o que o
+ * usuário comum pode fazer. Então o valor que ele mandou é trocado pelo que já
+ * estava gravado — ou pelo padrão, se o registro está nascendo agora.
+ *
+ * É aqui que a regra vale. Esconder o botão na tela é cortesia: quem souber o
+ * endereço desta rota marcaria "executado" com o botão escondido.
+ */
+function semMexerNaConferencia(dados, anterior) {
+  const limpo = { ...dados };
+  for (const campo of CAMPOS_DA_CONFERENCIA) {
+    if (anterior) limpo[campo] = anterior[campo];
+    else limpo[campo] = campo === "conferido" ? false : padraoDe(campo);
+  }
+  return limpo;
+}
+
+/** O registro como está gravado agora, para preservar o que não pode mudar. */
+async function comoEstaGravado(id, dados) {
+  const noMes = (await lerMes(mesDe(dados))).find((e) => e.id === id);
+  if (noMes) return noMes;
+  // A data pode ter mudado, e aí o registro está no pacote do mês antigo.
+  return (await lerTudo()).find((e) => e.id === id) || null;
+}
+
 export default async function handler(req, res) {
+  // Nenhum dado de paciente sai daqui sem acesso. O middleware já barra quem
+  // não tem cookie; esta linha é o que decide o que cada papel pode fazer, e
+  // ela não acredita em cabeçalho que alguém possa inventar.
+  const pessoa = await exigir(req, res);
+  if (!pessoa) return;
+
+  const confere = podeConferir(pessoa.papel);
+
   try {
     if (req.method === "GET") {
       // `?mes=2026-11` e `?ano=2026` existem para a área da secretária, que
@@ -218,11 +258,18 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       // Lote: a foto de um mapa cirúrgico vira vários lançamentos de uma vez.
       if (Array.isArray((req.body || {}).registros)) {
-        return lancarLote(req.body.registros, res);
+        const registros = confere
+          ? req.body.registros
+          : req.body.registros.map((r) => semMexerNaConferencia(r, null));
+        return lancarLote(registros, res);
       }
 
       const { confirmarDuplicado, ...dados } = req.body || {};
-      const entry = normalizarRegistro({ ...dados, id: randomUUID(), criadoEm: new Date().toISOString() });
+      const entry = normalizarRegistro({
+        ...(confere ? dados : semMexerNaConferencia(dados, null)),
+        id: randomUUID(),
+        criadoEm: new Date().toISOString(),
+      });
 
       const { duplicada } = await acrescentar(
         entry,
@@ -236,8 +283,13 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "PUT") {
-      const updated = normalizarRegistro(req.body || {});
+      let updated = normalizarRegistro(req.body || {});
       if (!updated || !updated.id) return res.status(400).json({ error: "id é obrigatório" });
+
+      if (!confere) {
+        const gravado = await comoEstaGravado(updated.id, updated);
+        if (gravado) updated = normalizarRegistro(semMexerNaConferencia(updated, gravado));
+      }
 
       const anterior = await atualizar(updated);
 
@@ -246,6 +298,12 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "DELETE") {
+      // Apagar paciente é da secretária e do mestre. O usuário comum corrige o
+      // que estiver errado; o que sai do controle sai por quem confere.
+      if (!podeApagarRegistro(pessoa.papel)) {
+        return res.status(403).json({ error: "Seu acesso não permite apagar pacientes." });
+      }
+
       const { id } = req.query;
       if (!id) return res.status(400).json({ error: "id é obrigatório" });
 

@@ -77,6 +77,11 @@ antes de mexer nela:
 4. **Link curto**: registre-o como **domínio do projeto** (Settings → Domains),
    e não como apelido solto — apelido congela numa versão antiga.
 
+5. **O primeiro acesso**, logo depois de publicar: abra `/entrar`. Com a lista de
+   pessoas vazia, a tela oferece criar o mestre — nome, usuário `admin.admin` e
+   um PIN de 6 dígitos. Faça isso no mesmo dia: até alguém criar o mestre, quem
+   souber o endereço poderia criá-lo no seu lugar.
+
 ## Preparar a pasta do Drive (a equipe faz)
 
 A conta de serviço do Google **não tem cota de armazenamento** e não consegue
@@ -142,10 +147,49 @@ Estão comentados no código, mas vale a lista:
   Guia sem o último dígito é completada; guia com dígito divergente é avisada,
   mas **não** corrigida — sobrescrever produziria um número plausível e errado.
 
+## Quem entra no app, e com que papel
+
+O app é trancado por **usuário e PIN**, um por pessoa. O usuário é digitado
+(`nome.sobrenome`) e não escolhido numa lista — uma lista contaria a quem abrisse
+o endereço quem trabalha aqui. Digita-se uma vez por aparelho; o cookie responde
+sozinho por 90 dias, então num plantão não se digita nada.
+
+Três papéis:
+
+|                                         | mestre | secretária | equipe |
+| --------------------------------------- | :----: | :--------: | :----: |
+| Entrar, lançar, corrigir qualquer campo |   ✓    |     ✓      |   ✓    |
+| Trocar o próprio PIN                    |   ✓    |     ✓      |   ✓    |
+| Marcar Executado, PC Executado, conferido |  ✓   |     ✓      |   —    |
+| Apagar registro                         |   ✓    |     ✓      |   —    |
+| Tela `/secretaria`                      |   ✓    |     ✓      |   —    |
+| Criar pessoa, zerar PIN, derrubar aparelho | ✓   |     —      |   —    |
+
+**Cada regra vale no servidor**, não só na tela. O usuário comum não vê os
+botões de Executado e a lixeira, mas o que protege é a rota recusar: um `PUT`
+forjado com `executado: "sim"` é aceito e **ignora** esse campo (a correção do
+nome na mesma requisição vale — é o que ele pode fazer), um `POST` nasce com os
+campos da conferência em branco, e o `DELETE` responde 403.
+
+A lista de pessoas mora no Redis (`guias:acesso`); o PIN é guardado como
+PBKDF2-SHA256 com sal por pessoa, então ninguém — nem o mestre — consegue ler o
+PIN de outro: "zerar PIN" põe um novo. Cinco erros bloqueiam o usuário por 15
+minutos, e a resposta é a mesma para "usuário não existe" e "PIN errado".
+
+O dia 1, na seção **Cadastros → Acesso** (só do mestre): *Trazer do cadastro de
+anestesiologistas* monta o usuário de cada nome (`LEANDRO MARQUES CORREA` →
+`leandro.correa`), você marca quem entra e cria todos com um **PIN inicial
+único**; depois cada um troca o seu em *Trocar meu PIN*. Crie também um **segundo
+mestre**: é ele o resgate se você perder o seu PIN.
+
 ## Sobre segurança
 
 - A chave da Anthropic e as credenciais do Google ficam só no servidor, nunca
   chegam ao navegador.
-- Não há autenticação: qualquer pessoa com o link vê, adiciona e apaga.
+- Sem cookie válido, **nenhuma rota de dados responde** — nem `/api/entries`, nem
+  `/api/extract`, que gasta a chave da Anthropic.
+- A tranca não protege a **planilha**: lá quem manda é o compartilhamento do
+  Drive, e na célula tudo é editável, inclusive o que o papel não deixaria mexer
+  no app.
 - Os dados são de saúde. O app já pede para não ser indexado, mas o link deve
   circular só entre quem precisa.
