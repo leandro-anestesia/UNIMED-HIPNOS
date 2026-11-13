@@ -39,7 +39,6 @@ import {
 } from "../lib/campos";
 import {
   agoraLocal,
-  dataDoTexto,
   dataHoraDoInstante,
   duracaoEntre,
   formatarData,
@@ -526,7 +525,10 @@ export default function Home() {
       const parsed = await r.json();
       if (!r.ok) throw new Error(parsed.error || "Falha na leitura do mapa");
 
-      const data = dataDoTexto(parsed.data) || agoraLocal().data;
+      // A data do lançamento é a de hoje, não a do mapa: a folha costuma ser de
+      // dias antes, e é lendo-a que o lançamento acontece. Quem precisar de
+      // outra data troca no campo do mapa, que vale para todos os pacientes.
+      const data = agoraLocal().data;
       const linhas = (parsed.registros || []).map((p) => {
         const paciente = (p.paciente || "").toUpperCase();
         const procedimentos = (p.procedimentos || []).map((x) => (x || "").toUpperCase());
@@ -674,9 +676,13 @@ export default function Home() {
       const respostaDaLeitura = await r.json();
       if (!r.ok) throw new Error(respostaDaLeitura.error || "Falha na extração");
 
-      // `data` não é campo do registro: é a data lida do documento, que entra
-      // como data do lançamento. Fica fora do que se espalha no rascunho.
-      const { data: dataLida, ...parsed } = respostaDaLeitura;
+      // A leitura não devolve mais data: nenhum dos documentos tem data
+      // confiável para isto. A guia e a etiqueta trazem a data da solicitação
+      // ou do atendimento, quase sempre anterior ao procedimento, e usá-las
+      // jogava o lançamento para o mês errado. `data` ainda é desestruturada
+      // para o caso de um aparelho continuar com a versão anterior do app em
+      // cache: assim ela não se espalha no rascunho.
+      const { data: _dataIgnorada, ...parsed } = respostaDaLeitura;
 
       // A guia às vezes chega sem o último dígito: completa já aqui, que é o
       // momento do "lançar a guia", e mostra o que aconteceu. Só na Unimed: o
@@ -697,9 +703,6 @@ export default function Home() {
         ...parsed,
         ...emCaixa,
         local: localAtivo,
-        // A etiqueta traz a data do atendimento, e ela vale mais que a de hoje:
-        // a etiqueta pode ser lida no dia seguinte, e o mês da planilha mudaria.
-        ...(dataDoTexto(dataLida) ? { dataCirurgia: dataDoTexto(dataLida) } : {}),
         nGuia: guia.numero,
         procedimentos: paraLinhas(parsed.procedimentos),
       });

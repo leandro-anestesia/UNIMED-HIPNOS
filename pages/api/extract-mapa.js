@@ -29,13 +29,11 @@ const PROMPT = `Esta é a foto do MAPA CIRÚRGICO (ou agenda) de uma clínica: u
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
-  "data": "",
   "registros": [
     { "hora": "", "paciente": "", "convenio": "", "nGuia": "", "cirurgiao": "", "procedimentos": [] }
   ]
 }
 
-- "data": a data do mapa, no formato dd/mm/aaaa. Costuma estar no cabeçalho, em "DT. DA CONSULTA", "Período - dd/mm/aaaa até dd/mm/aaaa" ou "Data". Se houver várias iguais, use essa. Se não achar, devolva "".
 
 Para cada paciente:
 
@@ -58,6 +56,7 @@ Outras regras:
 - A folha pode ter DUAS PÁGINAS na mesma foto, uma embaixo da outra, cada uma com seu cabeçalho. Leia as duas e junte os pacientes numa lista só, na ordem em que aparecem.
 - Idade, identidade, telefone e prontuário NÃO são usados: não devolva nenhum deles.
 - Campo que não estiver visível ou legível fica como string vazia "" (ou lista vazia).
+- A DATA DO MAPA não é lida. A data do lançamento é a do dia em que a foto está sendo tirada, e quem a informa é o aplicativo. Não devolva data em campo nenhum nem acrescente uma chave de data ao JSON.
 - Não invente paciente, nem procedimento, nem número. Transcreva o que está escrito.`;
 
 /**
@@ -158,7 +157,7 @@ export default async function handler(req, res) {
       }))
       .filter((p) => !ehRecado(p));
 
-    return res.status(200).json({ data: (parsed.data || "").toString().trim(), registros });
+    return res.status(200).json({ registros });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message || "Erro desconhecido ao processar o mapa" });

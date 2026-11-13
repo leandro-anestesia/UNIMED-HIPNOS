@@ -48,7 +48,6 @@ Os quatro preenchem os mesmos campos; a etiqueta simplesmente tem menos deles. D
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
-  "data": "",
   "atendimento": "",
   "paciente": "",
   "convenio": "",
@@ -87,8 +86,6 @@ Como preencher cada campo:
 SE FOR ETIQUETA (B), onde cada coisa está:
 
 - "paciente": o que vem depois de "CLIENTE:".
-- "data": o que vem depois de "DATA ATENDIMENTO:", no formato dd/mm/aaaa. É a data da cirurgia.
-  CUIDADO: ao lado dela está "DATA NASC:", a data de nascimento. Não use essa, e não devolva a data de nascimento em campo nenhum.
 - "convenio": o que vem depois de "CONVÊNIO:".
 - "cirurgiao": o que vem depois de "CIRURGIÃO:". Devolva o nome SEM o "DR"/"DRA" da frente.
 - "procedimentos": o texto solto embaixo dos rótulos, sem código TUSS — por exemplo "CIRURGIA DE CATARATA" numa linha e "OLHO ESQUERDO" na seguinte. É UM procedimento só: junte as duas linhas numa entrada, porque a lateralidade faz parte dele. Nunca devolva a lateralidade como procedimento separado.
@@ -100,8 +97,6 @@ SE FOR A FICHA DA ENDODIAGNOSE (C), onde cada coisa está:
 A folha inteira é preenchida à mão, em letra de forma ou cursiva. Transcreva o que está escrito; não corrija e não complete.
 
 - "paciente": o que vem depois de "Nome :". Use esse, e não o "Nome social:" da linha de cima, que é outro campo e costuma vir vazio.
-- "data": o que vem depois de "Data Exame:", escrito em três pedaços (dia, mês, ano). O ano costuma vir com DOIS dígitos — devolva no formato dd/mm/aaaa, completando o século: "10/11/26" é "10/11/2026".
-  CUIDADO: "Data de Nasc:" é a data de nascimento e fica mais abaixo. Não use essa, e não devolva data de nascimento em campo nenhum.
 - "cirurgiao": o que vem depois de "Médico Responsável pelo exame:", que é quem faz o procedimento. Devolva o nome SEM o "DR"/"DRA" da frente.
   NÃO use "Médico Solicitante:", a linha logo acima: esse é quem pediu o exame, não quem o faz.
 - "convenio": o que vem depois de "Convênio:". Esta ficha é usada numa clínica onde os pacientes são da Unimed; se o campo estiver vazio ou ilegível, devolva "UNIMED".
@@ -121,16 +116,14 @@ SE FOR A SOLICITAÇÃO DE ANÁTOMO PATOLÓGICO (D), onde cada coisa está:
 - "paciente": o nome depois de "Beneficiário(a):".
 - "cirurgiao": o nome do CARIMBO no pé da folha — carimbo ou assinatura com o nome do médico, o CRM e a especialidade embaixo. Devolva só o nome, SEM o "DR"/"DRA" da frente e sem o CRM nem a especialidade.
   NÃO use "Requisitante:", a linha do alto: nesta folha quem faz o procedimento é quem carimbou no pé, e não quem a solicitou.
-- "data": devolva SEMPRE vazio nesta folha, mesmo que haja datas visíveis. "Dt. Solic", "Dt. Atend", "Dt. Intern", "Dt. Alta" e "Dt. Nasc" não são a data do procedimento — quem a informa é o aplicativo.
 - "convenio": devolva "UNIMED". A folha é da Unimed, e é ela que está no alto.
 - "procedimentos": uma entrada para cada linha da tabela "Cód. Proced." / "Descrição", juntando o código com a descrição no formato "CÓDIGO - DESCRIÇÃO". Exemplo: "40202666 - COLONOSCOPIA COM BIOPSIA E/OU CITOLOGIA". A linha da anestesia para endoscopia diagnóstica NÃO entra — vale aqui a mesma regra das linhas ignoradas, acima.
   As colunas "Qtd Autoriz." e "Via de acesso", à direita, NÃO entram.
 - "atendimento": a folha não traz. Deixe vazio.
 - Data de nascimento, sexo, CID, a observação com o CID por extenso e o "ANS Nº" NÃO são usados: não devolva nenhum deles em campo nenhum.
 
-Na guia (A), "data" só é preenchida se a folha trouxer claramente a data da cirurgia ou do atendimento; na dúvida, deixe vazia.
-
 Regras gerais:
+- NENHUMA DATA é lida, de documento nenhum. A data do lançamento é a do dia em que a foto está sendo tirada, e quem a informa é o aplicativo. Não devolva data em campo nenhum, nem acrescente uma chave de data ao JSON — nem a do atendimento, nem a da solicitação, nem a de nascimento.
 - Campo que não estiver visível ou legível fica como string vazia "" (ou lista vazia, em "procedimentos").
 - Não invente e não complete dados que não estejam escritos na guia.
 - Transcreva exatamente o que está escrito, inclusive em campos preenchidos à mão.
@@ -213,7 +206,6 @@ export default async function handler(req, res) {
     const procedimentos = semOsIgnorados(parsed.procedimentos);
 
     return res.status(200).json({
-      data: (parsed.data || "").toString().trim(),
       atendimento: (parsed.atendimento || "").toString().trim(),
       paciente: parsed.paciente || "",
       convenio: nomeDoConvenio(parsed.convenio),
