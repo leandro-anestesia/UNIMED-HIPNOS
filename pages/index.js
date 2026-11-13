@@ -964,6 +964,53 @@ export default function Home() {
   const updateExecutado = (entry, value) => updateCampo(entry, "executado", value, "o executado");
   const updateConferido = (entry, value) => updateCampo(entry, "conferido", value, "a conferência");
 
+  /**
+   * Traz sozinho o que mudou na planilha, ao abrir a aba Procedimentos.
+   *
+   * Só a leitura: nada é reescrito, então são poucas chamadas ao Google e dá
+   * para rodar de novo sem pensar. No máximo uma vez a cada cinco minutos por
+   * aparelho — abrir e fechar a aba dez vezes seguidas não vira dez leituras.
+   *
+   * Falha em silêncio de propósito: é um extra, e quem depende de ver o
+   * resultado aperta o 🔄. O que NÃO fica em silêncio é a recusa — se a
+   * planilha trouxe uma correção que o app não pôde aceitar, alguém precisa
+   * saber, senão a pessoa que corrigiu a célula acha que valeu.
+   */
+  const ultimaLeve = useRef(0);
+
+  async function sincronizacaoLeve() {
+    if (sincronizando) return;
+    if (Date.now() - ultimaLeve.current < 5 * 60 * 1000) return;
+    ultimaLeve.current = Date.now();
+
+    try {
+      const r = await fetch("/api/sync-sheets?leve=1", { method: "POST" });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.configurado === false) return;
+
+      if ((data.importadosDaPlanilha || []).length > 0) await loadEntries();
+
+      const recusadas = data.recusadas || [];
+      if (recusadas.length > 0) {
+        avisar(
+          "A planilha tem correções que eu não consegui aceitar:\n" +
+            recusadas.map((x) => `· ${x.paciente || "(sem nome)"} — ${x.coluna}: ${x.motivo}`).join("\n"),
+          "erro"
+        );
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === "procedimentos" && loaded) sincronizacaoLeve();
+    // `loaded` entra na conta para a primeira leitura não disputar com a carga
+    // inicial dos registros.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, loaded]);
+
   async function sincronizarPlanilha() {
     setSincronizando(true);
     try {
@@ -991,6 +1038,9 @@ export default function Home() {
         ? "\n\nNão consegui aceitar:\n" +
           recusadas.map((x) => `· ${x.paciente || "(sem nome)"} — ${x.coluna}: ${x.motivo}`).join("\n")
         : "";
+
+      // O 🔄 acabou de trazer tudo: o relógio da leve recomeça daqui.
+      ultimaLeve.current = Date.now();
 
       if (data.configurado === false) {
         avisar("A planilha do Google ainda não está configurada.", "erro");

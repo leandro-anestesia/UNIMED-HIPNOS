@@ -19,8 +19,30 @@ export default async function handler(req, res) {
     });
   }
 
+  // A sincronização leve só traz o que mudou na planilha e para por aí.
+  //
+  // É o que o app dispara sozinho ao abrir a aba Procedimentos: são algumas
+  // leituras no Google e nenhuma escrita, então pode rodar com frequência sem
+  // gastar cota nem brigar com quem está lançando. A reescrita das planilhas,
+  // a renormalização dos registros e o aprendizado dos procedimentos continuam
+  // só no 🔄, que é a sincronização inteira.
+  const leve = req.query.leve !== undefined;
+
   try {
     let entries = await lerTudo();
+
+    if (leve) {
+      const { ids: naFila } = await pendenciasDoEspelhamento();
+      const { entries: mesclados, mudancas, recusadas } = await pullDaPlanilha(entries, naFila);
+      if (mudancas.length > 0) await gravarTudo(mesclados);
+      return res.status(200).json({
+        ok: true,
+        configurado: true,
+        leve: true,
+        importadosDaPlanilha: mudancas,
+        recusadas,
+      });
+    }
 
     const normalizados = entries.map(normalizarRegistro);
     const guiasCompletadas = normalizados
