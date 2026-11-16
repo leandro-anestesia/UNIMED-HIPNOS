@@ -20,6 +20,7 @@ import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
 import { estadoDe, foiExecutada, opcoesDe, padraoDe, rotuloDe } from "../lib/estados";
 import { NOMES_DE_LOCAL, leituraDoLocal } from "../lib/locais";
+import { ehDaVision, regrasDaVision } from "../lib/vision";
 import { chaveDeOrdem, ordenarRegistros } from "../lib/ordem";
 import { modeloDoRegistro } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
@@ -644,7 +645,9 @@ export default function Home() {
       const r = await fetch("/api/extract-mapa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64, mediaType: "image/jpeg" }),
+        // O local vai junto porque a folha da Vision é outra, e a leitura
+        // precisa saber qual instrução usar.
+        body: JSON.stringify({ imageBase64: base64, mediaType: "image/jpeg", local: localAtivo }),
       });
       const parsed = await r.json();
       if (!r.ok) throw new Error(parsed.error || "Falha na leitura do mapa");
@@ -653,22 +656,54 @@ export default function Home() {
       // dias antes, e é lendo-a que o lançamento acontece. Quem precisar de
       // outra data troca no campo do mapa, que vale para todos os pacientes.
       const data = agoraLocal().data;
-      const linhas = (parsed.registros || []).map((p) => {
-        const paciente = (p.paciente || "").toUpperCase();
-        const procedimentos = (p.procedimentos || []).map((x) => (x || "").toUpperCase());
-        return {
-          ...p,
-          paciente,
-          procedimentos,
-          jaLancado: jaExiste(paciente, data, procedimentos),
-          incluido: !jaExiste(paciente, data, procedimentos),
-        };
-      });
+      const lidas = (parsed.registros || []).map((p) => ({
+        ...p,
+        paciente: (p.paciente || "").toUpperCase(),
+        procedimentos: (p.procedimentos || []).map((x) => (x || "").toUpperCase()),
+      }));
+
+      // Na Vision o mapa não é lançado como está: o SUS sai, todo o resto vira
+      // particular com o convênio real na observação, procedimento em branco
+      // vira FACO + LIO com o olho, e o valor sai da tabela da clínica.
+      const daVision = ehDaVision(localAtivo);
+      const convertidas = daVision ? regrasDaVision(lidas) : { linhas: lidas, ignoradosDoSus: [], semValor: [] };
+
+      // A duplicata é conferida DEPOIS da conversão: é o procedimento final que
+      // identifica o lançamento, e antes dela ele ainda estaria em branco.
+      const linhas = convertidas.linhas.map((p) => ({
+        ...p,
+        jaLancado: jaExiste(p.paciente, data, p.procedimentos),
+        incluido: !jaExiste(p.paciente, data, p.procedimentos),
+      }));
 
       if (linhas.length === 0) {
-        setErrorMsg("Não achei nenhum paciente nesse mapa. Confira se a foto pegou a tabela inteira.");
+        setErrorMsg(
+          convertidas.ignoradosDoSus.length > 0
+            ? `Nesse mapa só havia paciente do SUS (${convertidas.ignoradosDoSus.length}), que não entra no controle.`
+            : "Não achei nenhum paciente nesse mapa. Confira se a foto pegou a tabela inteira."
+        );
         setStatus("idle");
         return;
+      }
+
+      // O que a conversão tirou ou não soube precificar é dito na cara. Linha
+      // que some calada é linha que ninguém procura depois.
+      if (daVision && (convertidas.ignoradosDoSus.length > 0 || convertidas.semValor.length > 0)) {
+        avisar(
+          [
+            convertidas.ignoradosDoSus.length > 0
+              ? `Fora do controle, por ser SUS: ${convertidas.ignoradosDoSus.join(", ")}.`
+              : "",
+            convertidas.semValor.length > 0
+              ? `Sem valor na tabela da clínica — preencha antes de lançar: ${convertidas.semValor
+                  .map((x) => `${x.paciente} (${x.convenioReal || "sem convênio"})`)
+                  .join(", ")}.`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          convertidas.semValor.length > 0 ? "erro" : "ok"
+        );
       }
 
       setMapa({ data, anestesista: "", linhas });
@@ -736,9 +771,11 @@ export default function Home() {
       executado: padraoDe("executado"),
       pcExecutado: padraoDe("pcExecutado"),
       recebido: padraoDe("recebido"),
-      valor: "",
+      // Os dois só vêm preenchidos no mapa da Vision, onde a conversão para
+      // particular é que define o valor e guarda o convênio real.
+      valor: l.valor === undefined || l.valor === null ? "" : l.valor,
       procedimentoComplementar: [],
-      observacao: "",
+      observacao: l.observacao || "",
     }));
 
     salvandoRef.current = true;
@@ -1576,13 +1613,51 @@ export default function Home() {
                       placeholder="Procedimento"
                     />
                     <div style={{ fontSize: TEXTO.miudo, color: CORES.suave, marginTop: 4 }}>
-                      {[l.hora, l.convenio, l.cirurgiao ? `Dr(a). ${l.cirurgiao}` : "", l.nGuia ? `Guia ${l.nGuia}` : ""]
+                      {[
+                        l.hora,
+                        // Na Vision o convênio do mapa virou PARTICULAR: a
+                        // linha mostra os dois, senão a conversão acontece sem
+                        // ninguém ver o que foi convertido.
+                        l.convenioReal !== undefined
+                          ? `PARTICULAR${l.convenioReal ? ` (${l.convenioReal})` : ""}`
+                          : l.convenio,
+                        l.cirurgiao ? `Dr(a). ${l.cirurgiao}` : "",
+                        l.nGuia ? `Guia ${l.nGuia}` : "",
+                      ]
                         .filter(Boolean)
                         .join(" · ")}
                       {l.jaLancado && (
                         <span style={{ color: CORES.alerta, fontWeight: 600 }}> · já lançado</span>
                       )}
                     </div>
+
+                    {/* O valor, só no mapa da Vision. Editável na própria
+                        linha porque é aqui que se descobre que faltou um: ir
+                        atrás do registro depois de salvo é o caminho em que a
+                        correção não acontece. */}
+                    {l.convenioReal !== undefined && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                        <span style={{ fontSize: TEXTO.miudo, color: CORES.suave, flexShrink: 0 }}>R$</span>
+                        <input
+                          style={{
+                            ...inputStyle,
+                            fontSize: TEXTO.apoio,
+                            maxWidth: 120,
+                            borderColor: l.valor === "" ? CORES.alerta : CORES.borda,
+                          }}
+                          type="text"
+                          inputMode="decimal"
+                          value={l.valor === "" || l.valor == null ? "" : String(l.valor).replace(".", ",")}
+                          onChange={(ev) => atualizarLinha(i, { valor: numeroDigitado(ev.target.value) })}
+                          placeholder="0,00"
+                        />
+                        {l.valor === "" && (
+                          <span style={{ fontSize: TEXTO.miudo, color: CORES.alerta, fontWeight: 600 }}>
+                            sem valor na tabela
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

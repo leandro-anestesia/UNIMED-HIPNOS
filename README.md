@@ -22,6 +22,30 @@ cadastros são separados.
 Os procedimentos marcados entram todos na **mesma célula** da planilha,
 separados por `·`.
 
+## A OFTALMO VISION tem regras próprias
+
+A folha da Vision é outra — "Módulo de Agenda Médica", com nome, cirurgião,
+olho e anotações empilhados dentro da mesma célula —, e lá **o pagamento é
+sempre do paciente**, mesmo quando a coluna Categoria traz um convênio. Por
+isso o app aplica, **só nesse local** (`lib/vision.js`):
+
+- **SUS não entra.** As linhas do SUS ficam fora do lançamento, e a tela diz
+  quais foram, em vez de sumir com elas calada.
+- **Todo o resto vira PARTICULAR**, com o convênio real guardado na observação
+  (`Convênio: UNIMED`). Quem já estava como particular não ganha anotação.
+- **Procedimento em branco é `FACO + LIO`**, com o olho junto (`FACO + LIO OD`),
+  que é como o cadastro do app já guarda.
+- **O valor sai da tabela da clínica:**
+
+  | Procedimento | Unimed | Poupe Saúde | Doctor Prime | Particular |
+  | --- | --- | --- | --- | --- |
+  | FACO + LIO | 280 | 300 | 300 | 500 |
+  | Blefaroplastia simples | 1200 | 1200 | 1200 | 1200 |
+  | Blefaroplastia superior e inferior | 1500 | 1500 | 1500 | 1500 |
+
+  Convênio fora dessa tabela entra **sem valor**, marcado em vermelho na
+  conferência e editável ali mesmo. O app não inventa dinheiro.
+
 ## Adaptar para a equipe
 
 Tudo que identifica a equipe está em **`lib/marca.js`**: nome, título, cores e o
