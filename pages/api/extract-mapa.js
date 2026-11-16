@@ -1,6 +1,7 @@
 import { semOsIgnorados } from "../../lib/procedimentos";
 import { normalizarTexto, semTratamento } from "../../lib/texto";
 import { exigir } from "../../lib/guarda";
+import { ehDaVision } from "../../lib/vision";
 
 export const config = {
   api: {
@@ -61,6 +62,58 @@ Outras regras:
 - Não invente paciente, nem procedimento, nem número. Transcreva o que está escrito.`;
 
 /**
+ * Leitura do mapa da OFTALMO VISION, que é outra folha.
+ *
+ * Instrução própria, e não uma seção acrescentada à de cima, porque os dois
+ * mapas não se parecem: lá o que interessa está num bloco "COMPLEMENTO:"
+ * abaixo da linha; aqui está tudo dentro da própria célula do paciente —
+ * nome, cirurgião, olho, marca da lente, valores cobrados pela clínica e
+ * recados. Uma instrução só, tentando cobrir as duas folhas, piora as duas.
+ *
+ * O que esta folha ensina:
+ *
+ * 1. A célula "Paciente" empilha várias informações, e só a(s) primeira(s)
+ *    linha(s) são o nome.
+ * 2. O cirurgião vem como "DR.EDUARDO", colado, dentro da mesma célula.
+ * 3. O procedimento quase nunca está escrito: está só o olho (OD/OE). Quem
+ *    completa é o app, com a regra da clínica.
+ * 4. O resto da célula é material e recado — lente, medicação, dinheiro —, e
+ *    nada disso é procedimento.
+ */
+const PROMPT_VISION = `Esta é a foto do MAPA CIRÚRGICO da clínica, no formato "Módulo de Agenda Médica": uma tabela com as colunas Hora, Paciente, Telefone, Categoria, Tipo, F, Atendente, C, E, Chegou e Ficha. Cada linha é um paciente de um mesmo dia.
+
+Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
+{
+  "registros": [
+    { "hora": "", "paciente": "", "convenio": "", "cirurgiao": "", "olho": "", "procedimentos": [] }
+  ]
+}
+
+Para cada paciente:
+
+- "hora": a coluna Hora, no formato HH:MM.
+- "paciente": SÓ o nome da pessoa, que ocupa a primeira linha da célula "Paciente" e às vezes continua na segunda (sobrenome que não coube). Pare no momento em que aparecer "DR."/"DRA." ou uma anotação. Devolva o nome como está escrito, sem as anotações.
+- "convenio": a coluna CATEGORIA — "Unimed", "Poupe Saúde", "Doctor Prime", "SUS", "Particular" e afins. Em branco, devolva "".
+- "cirurgiao": a linha da célula "Paciente" que começa com DR. ou DRA., normalmente colada ao nome ("DR.EDUARDO"). Devolva só o nome, SEM o "DR"/"DRA".
+- "olho": a linha da célula que traz apenas "OD", "OE" ou "AO". Se não houver, "".
+- "procedimentos": devolva a lista VAZIA quando a célula não nomear um procedimento — é o caso comum nesta folha, onde está escrito só o olho. Só preencha quando houver um procedimento escrito mesmo, como "BLEFAROPLASTIA", "BLEFAROPLASTIA SUPERIOR E INFERIOR", "PTERÍGIO", "TRANSPLANTE".
+
+O QUE NÃO É PROCEDIMENTO, e não entra em campo nenhum:
+
+- marca ou modelo de lente: "BIOTECH SERT MONOPLUS", "CICOLIN", "LOOP", "RAYONE", "ASFÉRICA", "LOOP OU RAYONE";
+- medicação e recado clínico: "DAR DIAMOX";
+- dinheiro: "R$4.500,00", "R$4.000,00 À VISTA", "R$4.500,00 NO CARTÃO", "EM 6X CARTÃO", "pagou 05/11 em dinheiro";
+- números de carteirinha ("058.6250.002117.01-7"), telefone e número da ficha.
+
+Outras regras:
+
+- Telefone, Tipo, F, Atendente, C, E, Chegou e Ficha NÃO são usados: não devolva nenhum deles, nem o número da carteirinha.
+- Linha sem nome de pessoa, ou que seja recado da clínica, não é paciente: não devolva.
+- A folha pode ter mais de uma página na mesma foto. Leia todas e junte numa lista só, na ordem.
+- A DATA do mapa não é lida: quem a informa é o aplicativo. Não devolva data em campo nenhum.
+- Não invente paciente, procedimento nem valor. Transcreva o que está escrito.`;
+
+/**
  * A linha é de paciente mesmo?
  *
  * Segunda tranca sobre a instrução: o mapa usa a agenda para recado, e recado
@@ -102,10 +155,15 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada no servidor" });
   }
 
-  const { imageBase64, mediaType } = req.body || {};
+  const { imageBase64, mediaType, local } = req.body || {};
   if (!imageBase64) {
     return res.status(400).json({ error: "imageBase64 é obrigatório" });
   }
+
+  // A Vision usa outra folha, e portanto outra instrução. O resto das clínicas
+  // segue na calibrada contra o ProDoctor.
+  const daVision = ehDaVision(local);
+  const prompt = daVision ? PROMPT_VISION : PROMPT;
 
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -125,7 +183,7 @@ export default async function handler(req, res) {
             role: "user",
             content: [
               { type: "image", source: { type: "base64", media_type: mediaType || "image/jpeg", data: imageBase64 } },
-              { type: "text", text: PROMPT },
+              { type: "text", text: prompt },
             ],
           },
         ],
@@ -158,6 +216,9 @@ export default async function handler(req, res) {
         convenio: (p.convenio || "").toString().trim(),
         nGuia: (p.nGuia || "").toString().replace(/\D/g, ""),
         cirurgiao: semTratamento(p.cirurgiao),
+        // Só a Vision escreve o olho em campo separado: nos outros mapas a
+        // lateralidade já vem dentro do procedimento.
+        ...(daVision ? { olho: (p.olho || "").toString().trim().toUpperCase() } : {}),
         // A mesma regra da guia: internação, visita hospitalar e recém-nascido
         // são item do hospital, não ato anestésico, e não entram na lista.
         procedimentos: semOsIgnorados(p.procedimentos),
