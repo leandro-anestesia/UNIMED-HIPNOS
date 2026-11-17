@@ -10,6 +10,7 @@ import {
   pendenciasDoEspelhamento,
 } from "../../lib/espelho";
 import { normalizarRegistro } from "../../lib/registro";
+import { osSoComplementares, recadoDoSoComplementar } from "../../lib/procedimentos";
 import { CAMPOS_DA_CONFERENCIA, podeApagarRegistro, podeConferir } from "../../lib/acesso";
 import { exigir } from "../../lib/guarda";
 import { padraoDe } from "../../lib/estados";
@@ -205,6 +206,15 @@ async function lancarLote(brutos, res) {
     });
   }
 
+  const noLugarErrado = novos.filter((e) => foraDeLugar(e).length > 0);
+  if (noLugarErrado.length > 0) {
+    return res.status(400).json({
+      error:
+        `${noLugarErrado.map((e) => e.paciente || "(sem nome)").join(", ")}: ` +
+        recadoDoSoComplementar(foraDeLugar(noLugarErrado[0])),
+    });
+  }
+
   const { gravados, duplicados } = await acrescentarVarios(novos, acharDuplicata);
 
   if (gravados.length > 0) {
@@ -227,6 +237,11 @@ async function lancarLote(brutos, res) {
  */
 function temProcedimento(entry) {
   return ((entry && entry.procedimentos) || []).filter((p) => (p || "").toString().trim()).length > 0;
+}
+
+/** O que está no principal e só podia estar no complementar. */
+function foraDeLugar(entry) {
+  return osSoComplementares((entry && entry.procedimentos) || []);
 }
 
 /**
@@ -299,6 +314,11 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "O procedimento é obrigatório." });
       }
 
+      const noLugarErrado = foraDeLugar(entry);
+      if (noLugarErrado.length > 0) {
+        return res.status(400).json({ error: recadoDoSoComplementar(noLugarErrado) });
+      }
+
       const { duplicada } = await acrescentar(
         entry,
         confirmarDuplicado === true ? null : acharDuplicata
@@ -324,11 +344,22 @@ export default async function handler(req, res) {
       // marca dezenas de linhas de uma vez: só vale a pena quando ela é
       // necessária — ou porque o procedimento veio vazio (único caso em que a
       // regra abaixo pode disparar), ou porque o papel não pode conferir.
+      const chegouForaDeLugar = foraDeLugar(updated);
       const antesDeMexer =
-        !confere || !temProcedimento(updated) ? await comoEstaGravado(updated.id, updated) : null;
+        !confere || !temProcedimento(updated) || chegouForaDeLugar.length > 0
+          ? await comoEstaGravado(updated.id, updated)
+          : null;
 
       if (antesDeMexer && temProcedimento(antesDeMexer) && !temProcedimento(updated)) {
         return res.status(400).json({ error: "O procedimento é obrigatório: este registro já tinha um." });
+      }
+
+      // Mesma lógica do procedimento obrigatório: recusa o que está ENTRANDO
+      // errado agora, e não tranca um registro que já estava assim — senão a
+      // secretária não conseguiria nem conferir o paciente que precisa ser
+      // corrigido.
+      if (chegouForaDeLugar.length > 0 && antesDeMexer && foraDeLugar(antesDeMexer).length === 0) {
+        return res.status(400).json({ error: recadoDoSoComplementar(chegouForaDeLugar) });
       }
 
       if (!confere && antesDeMexer) {

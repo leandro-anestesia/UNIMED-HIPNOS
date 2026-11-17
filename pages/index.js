@@ -21,6 +21,7 @@ import { analisarGuia } from "../lib/guia";
 import { estadoDe, foiExecutada, opcoesDe, padraoDe, rotuloDe } from "../lib/estados";
 import { NOMES_DE_LOCAL, leituraDoLocal } from "../lib/locais";
 import { ehDaVision, regrasDaVision } from "../lib/vision";
+import { osSoComplementares, recadoDoSoComplementar } from "../lib/procedimentos";
 import { chaveDeOrdem, ordenarRegistros } from "../lib/ordem";
 import { modeloDoRegistro } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
@@ -761,6 +762,17 @@ export default function Home() {
       );
       return;
     }
+
+    const foraDeLugar = marcadas
+      .map((l) => ({ paciente: l.paciente, achados: osSoComplementares(l.procedimentos) }))
+      .filter((x) => x.achados.length > 0);
+    if (foraDeLugar.length > 0) {
+      setErrorMsg(
+        `${foraDeLugar.map((x) => x.paciente || "(sem nome)").join(", ")}: ` +
+          recadoDoSoComplementar(foraDeLugar[0].achados)
+      );
+      return;
+    }
     if (!localAtivo) {
       setErrorMsg("Escolha o local antes de lançar o mapa.");
       return;
@@ -977,6 +989,15 @@ export default function Home() {
       setErrorMsg(
         "Informe o procedimento para salvar o registro. Se ele veio da guia, confira se está marcado."
       );
+      return;
+    }
+
+    // A assistência ao trabalho de parto, e outros cobrados à parte, não podem
+    // ocupar o campo principal: recusar aqui é o que faz o parto de verdade ser
+    // escrito, em vez de ficar sem registro nenhum.
+    const foraDeLugar = osSoComplementares(procedimentos);
+    if (foraDeLugar.length > 0) {
+      setErrorMsg(recadoDoSoComplementar(foraDeLugar));
       return;
     }
 
