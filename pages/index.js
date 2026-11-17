@@ -750,6 +750,17 @@ export default function Home() {
       setErrorMsg("Informe o anestesiologista que fez os procedimentos.");
       return;
     }
+
+    // Mesma regra do formulário, aplicada linha a linha: o mapa pode trazer
+    // paciente sem procedimento legível, e lançar assim empurra o problema
+    // para a conferência.
+    const semProcedimento = marcadas.filter((l) => (l.procedimentos || []).filter(Boolean).length === 0);
+    if (semProcedimento.length > 0) {
+      setErrorMsg(
+        `Preencha o procedimento de: ${semProcedimento.map((l) => l.paciente || "(sem nome)").join(", ")}.`
+      );
+      return;
+    }
     if (!localAtivo) {
       setErrorMsg("Escolha o local antes de lançar o mapa.");
       return;
@@ -938,6 +949,11 @@ export default function Home() {
     });
   }
 
+  // Falta procedimento, e já houve tentativa de salvar? É o que acende o
+  // vermelho na seção — antes disso, campo vazio é só campo ainda não
+  // preenchido.
+  const faltaProcedimento = !!errorMsg && marcados(draft.procedimentos).length === 0;
+
   async function confirmEntry() {
     // A trava real é o ref: o estado do React só vale no próximo render, e um
     // toque duplo rápido dispararia dois envios antes disso. O `salvando` serve
@@ -954,7 +970,17 @@ export default function Home() {
       return;
     }
 
-    const payload = { ...draft, procedimentos: marcados(draft.procedimentos) };
+    // Procedimento é o que a planilha cobra: registro sem ele é uma linha que
+    // não vira conta, e só se descobre na conferência, semanas depois.
+    const procedimentos = marcados(draft.procedimentos);
+    if (procedimentos.length === 0) {
+      setErrorMsg(
+        "Informe o procedimento para salvar o registro. Se ele veio da guia, confira se está marcado."
+      );
+      return;
+    }
+
+    const payload = { ...draft, procedimentos };
 
     salvandoRef.current = true;
     setSalvando(true);
@@ -1902,11 +1928,20 @@ export default function Home() {
                   anestesista desmarca o que não se aplica. Só os marcados são
                   gravados, na mesma célula da planilha. */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
-                  Procedimentos solicitados na guia
+                {/* O asterisco e o vermelho seguem a mesma regra dos outros
+                    campos obrigatórios: o aviso só pinta depois de uma
+                    tentativa de salvar, e não enquanto a pessoa ainda digita. */}
+                <span
+                  style={{
+                    fontSize: TEXTO.miudo,
+                    color: faltaProcedimento ? CORES.alerta : CORES.suave,
+                    fontWeight: faltaProcedimento ? 600 : 400,
+                  }}
+                >
+                  Procedimentos solicitados na guia *
                 </span>
                 {(draft.procedimentos || []).length === 0 && (
-                  <div style={{ fontSize: TEXTO.apoio, color: CORES.tenue }}>
+                  <div style={{ fontSize: TEXTO.apoio, color: faltaProcedimento ? CORES.alerta : CORES.tenue }}>
                     Nenhum procedimento lido da guia. Use o botão abaixo para acrescentar.
                   </div>
                 )}
