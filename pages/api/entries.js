@@ -193,6 +193,18 @@ async function lancarLote(brutos, res) {
     normalizarRegistro({ ...dados, id: randomUUID(), criadoEm: new Date().toISOString() })
   );
 
+  // Recusa o lote inteiro, e não só as linhas ruins: o mapa é conferido numa
+  // tela antes de ser lançado, e gravar metade deixaria quem fotografou sem
+  // saber o que entrou e o que não entrou.
+  const semProcedimento = novos.filter((e) => !temProcedimento(e));
+  if (semProcedimento.length > 0) {
+    return res.status(400).json({
+      error:
+        "Estes pacientes estão sem procedimento: " +
+        semProcedimento.map((e) => e.paciente || "(sem nome)").join(", "),
+    });
+  }
+
   const { gravados, duplicados } = await acrescentarVarios(novos, acharDuplicata);
 
   if (gravados.length > 0) {
@@ -203,6 +215,18 @@ async function lancarLote(brutos, res) {
   }
 
   return res.status(200).json({ gravados: gravados.length, duplicados });
+}
+
+/**
+ * Tem procedimento?
+ *
+ * É o que a planilha cobra: registro sem procedimento é linha que não vira
+ * conta, e o buraco só aparece na conferência, semanas depois. A tela já
+ * recusa; isto é a tranca do lado de cá, para o caso de uma requisição vir de
+ * outro lugar.
+ */
+function temProcedimento(entry) {
+  return ((entry && entry.procedimentos) || []).filter((p) => (p || "").toString().trim()).length > 0;
 }
 
 /**
@@ -271,6 +295,10 @@ export default async function handler(req, res) {
         criadoEm: new Date().toISOString(),
       });
 
+      if (!temProcedimento(entry)) {
+        return res.status(400).json({ error: "O procedimento é obrigatório." });
+      }
+
       const { duplicada } = await acrescentar(
         entry,
         confirmarDuplicado === true ? null : acharDuplicata
@@ -286,9 +314,25 @@ export default async function handler(req, res) {
       let updated = normalizarRegistro(req.body || {});
       if (!updated || !updated.id) return res.status(400).json({ error: "id é obrigatório" });
 
-      if (!confere) {
-        const gravado = await comoEstaGravado(updated.id, updated);
-        if (gravado) updated = normalizarRegistro(semMexerNaConferencia(updated, gravado));
+      // O procedimento não pode ser apagado de um registro que já o tinha.
+      //
+      // A regra é essa, e não "todo PUT precisa de procedimento": há registros
+      // antigos, e linhas vindas da planilha, que nasceram sem ele. Exigir aqui
+      // trancaria a secretária fora deles — ela não conseguiria nem marcar
+      // conferido num paciente que ela mesma precisa corrigir.
+      // A leitura do que está gravado custa uma ida ao banco, e a secretária
+      // marca dezenas de linhas de uma vez: só vale a pena quando ela é
+      // necessária — ou porque o procedimento veio vazio (único caso em que a
+      // regra abaixo pode disparar), ou porque o papel não pode conferir.
+      const antesDeMexer =
+        !confere || !temProcedimento(updated) ? await comoEstaGravado(updated.id, updated) : null;
+
+      if (antesDeMexer && temProcedimento(antesDeMexer) && !temProcedimento(updated)) {
+        return res.status(400).json({ error: "O procedimento é obrigatório: este registro já tinha um." });
+      }
+
+      if (!confere && antesDeMexer) {
+        updated = normalizarRegistro(semMexerNaConferencia(updated, antesDeMexer));
       }
 
       const anterior = await atualizar(updated);
