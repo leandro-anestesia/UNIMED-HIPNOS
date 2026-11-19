@@ -175,6 +175,20 @@ function mesesDosRegistros(entries) {
 function entryMatchesSearch(e, query) {
   const q = normalizarTexto(query);
   if (!q) return true;
+  // Os estados entram pelo RÓTULO, que é o que se digita: ninguém procura por
+  // "np", procura por "Não Retirado".
+  //
+  // E cada um só entra onde ele existe — o Recebido é do particular, o PC
+  // Executado é do convênio. Sem essa separação, o "Não" que todo registro
+  // carrega no Recebido por padrão faria a busca por "não" devolver a lista
+  // inteira, inclusive cirurgia de convênio, onde esse campo nem aparece.
+  const modelo = modeloDoRegistro(e);
+  const estados = [
+    rotuloDe("executado", e.executado),
+    modelo === "convenio" ? rotuloDe("pcExecutado", e.pcExecutado) : "",
+    modelo === "particular" ? rotuloDe("recebido", e.recebido) : "",
+  ];
+
   const textos = [
     e.atendimento,
     e.paciente,
@@ -183,6 +197,8 @@ function entryMatchesSearch(e, query) {
     e.anestesista,
     e.anestesistaCarimbo,
     ...(e.procedimentos || []),
+    ...(e.procedimentoComplementar || []),
+    ...estados,
   ];
   if (textos.some((f) => normalizarTexto(f).includes(q))) return true;
   if (e.dataCirurgia) {
