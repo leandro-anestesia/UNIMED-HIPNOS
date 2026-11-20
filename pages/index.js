@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import Icone from "../componentes/Icone";
 import {
   ALVO,
   ESPACO,
@@ -3179,7 +3180,7 @@ function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, totalDeHoj
 
   return (
     <div ref={wrapperRef} style={{ position: "relative", marginBottom: 12, opacity: desabilitado ? 0.45 : 1 }}>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <div className="fileira-de-meses" style={{ display: "flex", gap: 6 }}>
         {/* "Hoje" vem primeiro e nunca sai do lugar: é o que se procura no fim
             do plantão, e um chip que muda de posição é um chip que se erra.
             Sem registro no dia ele fica apagado e sem clique, como os meses
@@ -3218,9 +3219,10 @@ function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, totalDeHoj
             setAberta((v) => !v);
           }}
           title="Escolher outro mês"
-          style={{ ...chipMes, padding: "7px 11px" }}
+          aria-label="Escolher outro mês"
+          style={{ ...chipMes, padding: "7px 10px", display: "inline-flex", alignItems: "center" }}
         >
-          ▾
+          <Icone nome="calendario" tamanho={15} />
         </button>
       </div>
 

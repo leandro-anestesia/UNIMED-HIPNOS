@@ -140,3 +140,24 @@ input[type="time"]::-webkit-date-and-time-value {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * A fileira de meses rola na horizontal em vez de quebrar em duas linhas.
+ *
+ * Com o chip "Hoje", um mês escolhido fora dos recentes e contagens de dois
+ * dígitos, a fileira passa de 360px — num iPhone estreito ela virava duas
+ * linhas e empurrava a lista para baixo. Rolando, ela é sempre uma linha só, e
+ * numa tela normal tudo cabe sem precisar arrastar.
+ *
+ * A barra de rolagem some: ela cobriria a borda de baixo dos chips, e aqui o
+ * que diz que há mais para o lado é o próprio chip cortado na margem.
+ */
+.fileira-de-meses {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.fileira-de-meses::-webkit-scrollbar {
+  display: none;
+}
