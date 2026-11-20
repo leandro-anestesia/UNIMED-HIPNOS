@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { NOME_DO_COOKIE, lerAcesso, podeVerSecretaria, trancaConfigurada } from "./lib/acesso";
+import {
+  CABECALHO_DO_CODIGO,
+  NOME_DO_COOKIE,
+  lerAcesso,
+  lerCodigoDeCopia,
+  podeVerSecretaria,
+  trancaConfigurada,
+} from "./lib/acesso";
 
 /**
  * O cadeado.
@@ -48,6 +55,17 @@ export async function middleware(req) {
     return ehApi
       ? NextResponse.json({ error: recado }, { status: 503 })
       : new NextResponse(recado, { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
+  }
+
+  // O código de cópia atravessa o cadeado, e só por esta fresta: GET da lista
+  // de registros, com um código assinado e dentro do prazo. É por aqui que o
+  // app de teste busca os pacientes — um servidor não tem como digitar PIN.
+  if (
+    pathname === "/api/entries" &&
+    req.method === "GET" &&
+    (await lerCodigoDeCopia(req.headers.get(CABECALHO_DO_CODIGO)))
+  ) {
+    return NextResponse.next();
   }
 
   const lido = await lerAcesso(req.cookies.get(NOME_DO_COOKIE)?.value);

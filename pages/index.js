@@ -3491,6 +3491,9 @@ function SecaoDeAcesso({ cadastros, avisar, eu }) {
         </div>
       )}
 
+      {/* ── O código de cópia, para o app de teste ─────────────────────────── */}
+      <CodigoDeCopia avisar={avisar} />
+
       {/* ── Quem já tem acesso ────────────────────────────────────────────── */}
       {pessoas === null ? (
         <div style={{ fontSize: TEXTO.apoio, color: CORES.tenue }}>…</div>
@@ -3599,6 +3602,110 @@ function SecaoDeAcesso({ cadastros, avisar, eu }) {
  * vazou, o cookie que ele gerou vazou também —, e este aparelho recebe um
  * cookie novo na mesma resposta.
  */
+/**
+ * O código que deixa o app de teste copiar os pacientes daqui.
+ *
+ * Fica aqui, na seção do mestre, porque é dele a decisão de abrir a porta. O
+ * código vale quinze minutos, serve só para LER e não é cookie: quem o tiver
+ * não entra no app, não grava nada e não vira ninguém.
+ *
+ * O texto some da tela quando o prazo acaba — um código morto na tela é um
+ * convite a tentar de novo com ele e não entender por que não funciona.
+ */
+function CodigoDeCopia({ avisar }) {
+  const [codigo, setCodigo] = useState("");
+  const [faltam, setFaltam] = useState(0);
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    if (!codigo) return;
+    const t = setInterval(() => {
+      setFaltam((s) => {
+        if (s <= 1) {
+          setCodigo("");
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [codigo]);
+
+  async function gerar() {
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      const r = await fetch("/api/acesso/codigo", { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "falhou");
+      setCodigo(data.codigo);
+      setFaltam(data.minutos * 60);
+    } catch (e) {
+      avisar(`Não consegui gerar o código: ${e.message}`, "erro");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(codigo);
+      avisar("Código copiado.");
+    } catch (e) {
+      avisar("Não consegui copiar sozinho — selecione o texto e copie à mão.", "erro");
+    }
+  }
+
+  const minutos = Math.floor(faltam / 60);
+  const segundos = String(faltam % 60).padStart(2, "0");
+
+  return (
+    <div style={{ marginBottom: ESPACO[4] }}>
+      <button
+        onClick={gerar}
+        disabled={ocupado}
+        style={{ ...btnSecondary, width: "100%", padding: "10px 12px", fontSize: TEXTO.apoio }}
+      >
+        {codigo ? "▾ Gerar outro código de cópia" : "▾ Código para copiar os pacientes (app de teste)"}
+      </button>
+
+      {codigo && (
+        <div
+          style={{
+            marginTop: ESPACO[2],
+            border: `1px solid ${CORES.borda}`,
+            borderRadius: 6,
+            padding: ESPACO[3],
+            background: "white",
+          }}
+        >
+          <div style={{ fontSize: TEXTO.miudo, color: CORES.suave, marginBottom: ESPACO[2], lineHeight: 1.45 }}>
+            Cole este código no app de teste, em Acesso → Trazer os pacientes. Ele serve só para
+            ler, e vence em {minutos}:{segundos}.
+          </div>
+          <div
+            style={{
+              fontSize: TEXTO.miudo,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              wordBreak: "break-all",
+              background: CORES.fundo,
+              border: `1px solid ${CORES.bordaSuave}`,
+              borderRadius: 4,
+              padding: ESPACO[2],
+              marginBottom: ESPACO[2],
+            }}
+          >
+            {codigo}
+          </div>
+          <button onClick={copiar} style={{ ...btnPrimary, width: "100%", padding: "10px 12px", fontSize: TEXTO.apoio }}>
+            Copiar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * As iniciais de quem está logado, para o botão do cabeçalho.
  *
