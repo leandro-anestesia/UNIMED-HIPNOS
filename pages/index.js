@@ -108,6 +108,16 @@ const TODOS_OS_MESES = "todos";
  */
 const SO_HOJE = "hoje";
 
+/**
+ * Quanto a ilha das abas ocupa, do fim da tela para cima: o conteúdo da aba,
+ * o respiro de dentro da ilha e o afastamento de baixo.
+ *
+ * Mora aqui porque três lugares precisam concordar com ele — a própria ilha, o
+ * aviso que sobe acima dela e o espaço no fim da página. Quando estavam
+ * espalhados, mudar a barra deixava o aviso encostando nela.
+ */
+const ALTURA_DA_BARRA = 76;
+
 /** O filtro de local da lista, quando nenhum está escolhido. */
 const TODOS_OS_LOCAIS = "todos";
 const TODOS_OS_CONVENIOS = "todos";
@@ -1398,7 +1408,7 @@ export default function Home() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: CORES.fundo, color: CORES.tinta, paddingBottom: 96 }}>
+    <div style={{ minHeight: "100vh", background: CORES.fundo, color: CORES.tinta, paddingBottom: `calc(${ALTURA_DA_BARRA + ESPACO[4]}px + env(safe-area-inset-bottom))` }}>
       <div style={{ background: CORES.escura, padding: "20px 20px 24px", position: "relative" }}>
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${CORES.principal}, ${CORES.acento})` }} />
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -2688,7 +2698,7 @@ export default function Home() {
             left: ESPACO[3],
             right: ESPACO[3],
             // Acima da barra de abas, nunca por cima dela.
-            bottom: `calc(${ALVO + ESPACO[2] + ESPACO[3]}px + env(safe-area-inset-bottom))`,
+            bottom: `calc(${ALTURA_DA_BARRA + ESPACO[2]}px + env(safe-area-inset-bottom))`,
             zIndex: 60,
             display: "flex",
             alignItems: "flex-start",
@@ -2744,14 +2754,20 @@ export default function Home() {
         <nav
           style={{
             position: "fixed",
-            left: 0,
-            right: 0,
-            bottom: 0,
+            // Descolada das bordas: a barra vira uma ilha sobre o conteúdo, e
+            // não um rodapé grudado. O respiro embaixo é o da barra do iPhone,
+            // somado ao afastamento — sem ele a ilha encostaria no indicador.
+            left: ESPACO[3],
+            right: ESPACO[3],
+            bottom: `calc(${ESPACO[3]}px + env(safe-area-inset-bottom))`,
             display: "flex",
+            gap: ESPACO[1],
+            padding: ESPACO[1],
             background: "white",
-            borderTop: `1px solid ${CORES.borda}`,
-            // O respiro da barra do iPhone, que fica por cima do conteúdo.
-            paddingBottom: "env(safe-area-inset-bottom)",
+            border: `1px solid ${CORES.borda}`,
+            borderRadius: 999,
+            // A sombra é o que separa a ilha do que passa por baixo dela.
+            boxShadow: "0 6px 20px rgba(26, 26, 26, 0.10)",
             zIndex: 40,
           }}
         >
@@ -2764,19 +2780,25 @@ export default function Home() {
                 aria-current={ativa ? "page" : undefined}
                 style={{
                   flex: 1,
-                  minHeight: ALVO + ESPACO[2],
+                  minWidth: 0,
+                  minHeight: ALVO,
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 2,
-                  padding: `${ESPACO[2]}px 0`,
-                  background: "none",
+                  padding: `${ESPACO[2]}px ${ESPACO[1]}px`,
+                  // A aba ativa é uma pílula preenchida, no mesmo tom que o
+                  // resto do app já usa para "escolhido" (chip de mês, bloco
+                  // de cadastro aberto). A linha no topo saiu: dentro de uma
+                  // ilha arredondada ela cortava o canto.
+                  background: ativa ? CORES.clara : "transparent",
                   border: "none",
-                  borderTop: `2px solid ${ativa ? CORES.principal : "transparent"}`,
+                  borderRadius: 999,
                   color: ativa ? CORES.escura : CORES.suave,
                   fontWeight: ativa ? 600 : 500,
                   fontSize: TEXTO.miudo,
+                  whiteSpace: "nowrap",
                   cursor: "pointer",
                 }}
               >
