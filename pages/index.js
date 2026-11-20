@@ -2803,7 +2803,7 @@ export default function Home() {
                   cursor: "pointer",
                 }}
               >
-                <span style={{ fontSize: 19, lineHeight: 1 }}>{aba.icone}</span>
+                <Icone nome={aba.icone} tamanho={21} espessura={ativa ? 1.8 : 1.5} />
                 {aba.nome}
               </button>
             );
@@ -2830,11 +2830,17 @@ function semLocal(base, localAtivo) {
   return localAtivo ? base : { ...base, opacity: 0.45, cursor: "default" };
 }
 
-/** As três abas do app, na ordem em que aparecem no rodapé. */
+/**
+ * As três abas do app, na ordem em que aparecem no rodapé.
+ *
+ * Ícones de traço, e não emoji: emoji é multicolorido, muda de desenho em cada
+ * sistema e não alinha com o texto ao lado. O da aba ativa vem um pouco mais
+ * grosso, e a cor é a do texto em volta — a aba escolhida escurece junto.
+ */
 const ABAS = [
-  { chave: "novo", nome: "Novo", icone: "➕" },
-  { chave: "procedimentos", nome: "Procedimentos", icone: "📋" },
-  { chave: "cadastros", nome: "Cadastros", icone: "👥" },
+  { chave: "novo", nome: "Novo", icone: "camera" },
+  { chave: "procedimentos", nome: "Procedimentos", icone: "mapa" },
+  { chave: "cadastros", nome: "Cadastros", icone: "pessoas" },
 ];
 
 /**
