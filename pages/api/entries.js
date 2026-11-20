@@ -11,7 +11,13 @@ import {
 } from "../../lib/espelho";
 import { normalizarRegistro } from "../../lib/registro";
 import { osSoComplementares, recadoDoSoComplementar } from "../../lib/procedimentos";
-import { CAMPOS_DA_CONFERENCIA, podeApagarRegistro, podeConferir } from "../../lib/acesso";
+import {
+  CABECALHO_DO_CODIGO,
+  CAMPOS_DA_CONFERENCIA,
+  lerCodigoDeCopia,
+  podeApagarRegistro,
+  podeConferir,
+} from "../../lib/acesso";
 import { exigir } from "../../lib/guarda";
 import { padraoDe } from "../../lib/estados";
 import {
@@ -276,10 +282,18 @@ export default async function handler(req, res) {
   // Nenhum dado de paciente sai daqui sem acesso. O middleware já barra quem
   // não tem cookie; esta linha é o que decide o que cada papel pode fazer, e
   // ela não acredita em cabeçalho que alguém possa inventar.
-  const pessoa = await exigir(req, res);
-  if (!pessoa) return;
+  //
+  // A exceção é o código de cópia, e ela é estreita de propósito: vale SÓ para
+  // GET, só por quinze minutos, e quem o apresenta não vira pessoa nenhuma —
+  // não grava, não apaga e não confere. É assim que o app de teste busca os
+  // pacientes daqui sem que exista um segredo permanente guardado nos dois
+  // projetos.
+  const comCodigo = req.method === "GET" && (await lerCodigoDeCopia(req.headers[CABECALHO_DO_CODIGO]));
 
-  const confere = podeConferir(pessoa.papel);
+  const pessoa = comCodigo ? null : await exigir(req, res);
+  if (!comCodigo && !pessoa) return;
+
+  const confere = comCodigo ? false : podeConferir(pessoa.papel);
 
   try {
     if (req.method === "GET") {
@@ -375,7 +389,7 @@ export default async function handler(req, res) {
     if (req.method === "DELETE") {
       // Apagar paciente é da secretária e do mestre. O usuário comum corrige o
       // que estiver errado; o que sai do controle sai por quem confere.
-      if (!podeApagarRegistro(pessoa.papel)) {
+      if (!pessoa || !podeApagarRegistro(pessoa.papel)) {
         return res.status(403).json({ error: "Seu acesso não permite apagar pacientes." });
       }
 
