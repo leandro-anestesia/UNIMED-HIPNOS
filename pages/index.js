@@ -100,6 +100,13 @@ function horasDe(entrada) {
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
 const TODOS_OS_MESES = "todos";
+/**
+ * O chip "Hoje".
+ *
+ * Não é um mês, e por isso tem valor próprio: entra no mesmo estado do
+ * seletor, mas a comparação é com a data inteira, não com o `ano-mês`.
+ */
+const SO_HOJE = "hoje";
 
 /** O filtro de local da lista, quando nenhum está escolhido. */
 const TODOS_OS_LOCAIS = "todos";
@@ -1309,11 +1316,23 @@ export default function Home() {
     ...new Set(entries.map((e) => (e.convenio || "").trim()).filter(Boolean)),
   ].sort();
 
+  // O dia de hoje, pela hora do aparelho. Recalculado a cada render: quem
+  // atravessa a meia-noite com o app aberto vê o "Hoje" virar no próximo toque,
+  // e não fica preso no dia anterior.
+  const hoje = agoraLocal().data;
+  // A contagem do chip ignora os filtros de local e convênio, igual à dos
+  // chips de mês: é quantos há no dia, não quantos sobraram na tela.
+  const totalDeHoje = entries.filter((e) => (e.dataCirurgia || "") === hoje).length;
+
   const registrosVisiveis = entries
     .filter((e) => localFiltro === TODOS_OS_LOCAIS || (e.local || "").trim() === localFiltro)
     .filter((e) => convenioFiltro === TODOS_OS_CONVENIOS || (e.convenio || "").trim() === convenioFiltro)
     .filter((e) => entryMatchesSearch(e, searchQuery))
-    .filter((e) => buscando || mesSelecionado === TODOS_OS_MESES || !mesSelecionado || chaveDoMes(e) === mesSelecionado)
+    .filter((e) => {
+      if (buscando || mesSelecionado === TODOS_OS_MESES || !mesSelecionado) return true;
+      if (mesSelecionado === SO_HOJE) return (e.dataCirurgia || "") === hoje;
+      return chaveDoMes(e) === mesSelecionado;
+    })
     .sort(ordenarRegistros);
 
   const resumo = {
@@ -2277,6 +2296,7 @@ export default function Home() {
                 selecionado={buscando ? null : mesSelecionado}
                 onSelecionar={setMesSelecionado}
                 totalGeral={entries.length}
+                totalDeHoje={totalDeHoje}
                 desabilitado={buscando}
               />
             )}
@@ -2287,6 +2307,8 @@ export default function Home() {
                 <div style={{ fontSize: TEXTO.miudo, letterSpacing: "0.1em", textTransform: "uppercase", color: CORES.suave }}>
                   {buscando
                     ? "Resultados da busca"
+                    : mesSelecionado === SO_HOJE
+                    ? `Hoje · ${formatarData(hoje)}`
                     : mesSelecionado === TODOS_OS_MESES || !mesSelecionado
                     ? "Todos os registros"
                     : nomeDoMes(mesSelecionado, true)}
@@ -3095,12 +3117,15 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
  * isso só entram os 2 mais recentes, mais o mês escolhido quando ele estiver
  * fora desses, e a grade cobre qualquer mês de qualquer ano.
  */
-function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, desabilitado }) {
+function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, totalDeHoje, desabilitado }) {
   const [aberta, setAberta] = useState(false);
   const wrapperRef = useRef(null);
 
   const anos = [...new Set(meses.map((m) => m.chave.slice(0, 4)))].sort();
-  const anoDoSelecionado = selecionado && selecionado !== TODOS_OS_MESES ? selecionado.slice(0, 4) : null;
+  // "hoje" e "todos" não são chaves de mês: sem esta guarda, a grade abriria
+  // no ano "hoje" e o terceiro chip apareceria escrito errado.
+  const ehChaveDeMes = Boolean(selecionado) && selecionado !== TODOS_OS_MESES && selecionado !== SO_HOJE;
+  const anoDoSelecionado = ehChaveDeMes ? selecionado.slice(0, 4) : null;
   const [ano, setAno] = useState(anoDoSelecionado || anos[anos.length - 1] || String(new Date().getFullYear()));
 
   // Mesmo padrão do AutocompleteInput. O touchstart é o que faz fechar no iPhone.
@@ -3133,6 +3158,23 @@ function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, desabilita
   return (
     <div ref={wrapperRef} style={{ position: "relative", marginBottom: 12, opacity: desabilitado ? 0.45 : 1 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {/* "Hoje" vem primeiro e nunca sai do lugar: é o que se procura no fim
+            do plantão, e um chip que muda de posição é um chip que se erra.
+            Sem registro no dia ele fica apagado e sem clique, como os meses
+            vazios da grade — tocar nele só levaria a uma lista vazia. */}
+        <button
+          onClick={() => totalDeHoje > 0 && onSelecionar(SO_HOJE)}
+          disabled={totalDeHoje === 0}
+          title="Só os lançamentos de hoje"
+          style={{
+            ...chipMes,
+            ...(!desabilitado && selecionado === SO_HOJE ? chipMesAtivo : null),
+            opacity: totalDeHoje === 0 ? 0.45 : 1,
+            cursor: totalDeHoje === 0 ? "default" : "pointer",
+          }}
+        >
+          Hoje <span style={{ opacity: 0.6 }}>{totalDeHoje}</span>
+        </button>
         {visiveis.map((chave) => (
           <button
             key={chave}
