@@ -335,6 +335,9 @@ export default function Home() {
   const [acesso, setAcesso] = useState(undefined);
   // O menu da pessoa, no cabeçalho. Fechado por padrão: ele cobre conteúdo.
   const [menuDoAcesso, setMenuDoAcesso] = useState(false);
+  // Qual seção dos Cadastros está aberta. Uma de cada vez, e nenhuma ao
+  // chegar: é o que faz os títulos caberem numa tela só.
+  const [blocoAberto, setBlocoAberto] = useState(null);
 
   const permissao = useCallback(
     (teste) => {
@@ -2491,7 +2494,7 @@ export default function Home() {
         )}
 
         {status === "idle" && activeTab === "cadastros" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: ESPACO[2] }}>
             <CadastroSection
               title="Cirurgiões"
               placeholder="Nome do cirurgião"
@@ -2499,6 +2502,8 @@ export default function Home() {
               onAdd={(nome) => addCadastro("cirurgioes", nome)}
               onImportar={(nomes) => importarCadastros("cirurgioes", nomes)}
               onRemove={(nome) => removeCadastro("cirurgioes", nome)}
+              aberto={blocoAberto === "cirurgioes"}
+              aoAlternar={() => setBlocoAberto((b) => (b === "cirurgioes" ? null : "cirurgioes"))}
             />
             <CadastroSection
               title="Anestesiologistas"
@@ -2507,6 +2512,8 @@ export default function Home() {
               onAdd={(nome) => addCadastro("anestesistas", nome)}
               onImportar={(nomes) => importarCadastros("anestesistas", nomes)}
               onRemove={(nome) => removeCadastro("anestesistas", nome)}
+              aberto={blocoAberto === "anestesistas"}
+              aoAlternar={() => setBlocoAberto((b) => (b === "anestesistas" ? null : "anestesistas"))}
             />
             {/* Estas duas listas se enchem sozinhas, a cada registro salvo.
                 Estão aqui para o caso contrário: apagar um nome que entrou
@@ -2524,6 +2531,8 @@ export default function Home() {
               onAdd={(nome) => addCadastro("procedimentos", nome)}
               onImportar={(nomes) => importarCadastros("procedimentos", nomes)}
               onRemove={(nome) => removeCadastro("procedimentos", nome)}
+              aberto={blocoAberto === "procedimentos"}
+              aoAlternar={() => setBlocoAberto((b) => (b === "procedimentos" ? null : "procedimentos"))}
             />
             <CadastroSection
               title="Convênios"
@@ -2532,6 +2541,8 @@ export default function Home() {
               onAdd={(nome) => addCadastro("convenios", nome)}
               onImportar={(nomes) => importarCadastros("convenios", nomes)}
               onRemove={(nome) => removeCadastro("convenios", nome)}
+              aberto={blocoAberto === "convenios"}
+              aoAlternar={() => setBlocoAberto((b) => (b === "convenios" ? null : "convenios"))}
             />
             <CadastroSection
               title="Quem recebe"
@@ -2540,9 +2551,19 @@ export default function Home() {
               onAdd={(nome) => addCadastro("recebedores", nome)}
               onImportar={(nomes) => importarCadastros("recebedores", nomes)}
               onRemove={(nome) => removeCadastro("recebedores", nome)}
+              aberto={blocoAberto === "recebedores"}
+              aoAlternar={() => setBlocoAberto((b) => (b === "recebedores" ? null : "recebedores"))}
             />
 
-            {ehMestre && <SecaoDeAcesso cadastros={cadastros} avisar={avisar} eu={acesso} />}
+            {ehMestre && (
+              <SecaoDeAcesso
+                cadastros={cadastros}
+                avisar={avisar}
+                eu={acesso}
+                aberto={blocoAberto === "acesso"}
+                aoAlternar={() => setBlocoAberto((b) => (b === "acesso" ? null : "acesso"))}
+              />
+            )}
 
             {/* A área de conferência é tela de computador, e não entra na barra
                 de abas do celular — ela atrapalharia quem lança. Fica aqui, no
@@ -2872,7 +2893,88 @@ function nomesDoTexto(texto) {
     });
 }
 
-function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemove }) {
+/**
+ * Uma seção dos Cadastros que começa fechada.
+ *
+ * A aba tinha seis seções abertas uma embaixo da outra, cada uma com a lista
+ * inteira à mostra: achar os convênios custava rolar a página toda. Fechadas,
+ * os seis títulos cabem numa tela só.
+ *
+ * Abrir uma fecha a anterior, e é isso que mantém a promessa: com duas abertas
+ * o problema volta na primeira lista comprida. A contagem no título existe para
+ * que fechado não vire cego — dá para ver que há 24 cirurgiões sem abrir.
+ */
+function Bloco({ titulo, quantidade, aberto, aoAlternar, children }) {
+  const caixa = useRef(null);
+
+  // Ao abrir, trazer o título para o topo. Sem isto, uma seção lá embaixo abre
+  // fora da tela e a pessoa rola atrás do que acabou de pedir.
+  useEffect(() => {
+    if (aberto && caixa.current) {
+      caixa.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [aberto]);
+
+  return (
+    <div
+      ref={caixa}
+      style={{
+        border: `1px solid ${CORES.borda}`,
+        borderRadius: 8,
+        background: "white",
+        overflow: "hidden",
+        scrollMarginTop: ESPACO[2],
+      }}
+    >
+      <button
+        type="button"
+        onClick={aoAlternar}
+        aria-expanded={aberto}
+        style={{
+          width: "100%",
+          minHeight: ALVO,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: ESPACO[2],
+          padding: `0 ${ESPACO[3]}px`,
+          background: aberto ? CORES.clara : "transparent",
+          border: "none",
+          cursor: "pointer",
+          textAlign: "left",
+          font: "inherit",
+        }}
+      >
+        <span
+          style={{
+            fontSize: TEXTO.miudo,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: CORES.suave,
+          }}
+        >
+          {titulo}
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: ESPACO[2], flexShrink: 0 }}>
+          {quantidade !== undefined && (
+            <span style={{ fontSize: TEXTO.miudo, color: CORES.tenue }}>{quantidade}</span>
+          )}
+          <span style={{ fontSize: TEXTO.apoio, color: CORES.suave }}>{aberto ? "\u25b4" : "\u25be"}</span>
+        </span>
+      </button>
+
+      {/* Fechado, o conteúdo não é renderizado: é o que torna a aba leve
+          quando as listas crescem. */}
+      {aberto && (
+        <div style={{ padding: ESPACO[3], borderTop: `1px solid ${CORES.bordaSuave}` }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemove, aberto, aoAlternar }) {
   const [value, setValue] = useState("");
   const [lote, setLote] = useState("");
   const [abrirLote, setAbrirLote] = useState(false);
@@ -2907,10 +3009,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
   }
 
   return (
-    <div>
-      <div style={{ fontSize: TEXTO.miudo, letterSpacing: "0.1em", textTransform: "uppercase", color: CORES.suave, marginBottom: 10 }}>
-        {title}
-      </div>
+    <Bloco titulo={title} quantidade={items.length} aberto={aberto} aoAlternar={aoAlternar}>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <input
           style={{ ...inputStyle, flex: 1 }}
@@ -2984,7 +3083,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
           ))}
         </div>
       )}
-    </div>
+    </Bloco>
   );
 }
 
@@ -3278,7 +3377,7 @@ function usuariosDoCadastro(nomes, jaCadastrados) {
  * app já carrega. Então é daqui que a equipe entra no acesso — com o usuário já
  * montado a partir do nome e um PIN inicial único, que cada um troca depois.
  */
-function SecaoDeAcesso({ cadastros, avisar, eu }) {
+function SecaoDeAcesso({ cadastros, avisar, eu, aberto, aoAlternar }) {
   const [pessoas, setPessoas] = useState(null);
   const [pinInicial, setPinInicial] = useState("");
   const [abrirTrazer, setAbrirTrazer] = useState(false);
@@ -3413,11 +3512,12 @@ function SecaoDeAcesso({ cadastros, avisar, eu }) {
   };
 
   return (
-    <div>
-      <div style={{ fontSize: TEXTO.miudo, letterSpacing: "0.1em", textTransform: "uppercase", color: CORES.suave, marginBottom: 10 }}>
-        Acesso
-      </div>
-
+    <Bloco
+      titulo="Acesso"
+      quantidade={pessoas ? pessoas.length : undefined}
+      aberto={aberto}
+      aoAlternar={aoAlternar}
+    >
       <div style={{ fontSize: TEXTO.miudo, color: CORES.tenue, marginBottom: ESPACO[3], lineHeight: 1.5 }}>
         Quem pode entrar no app, e com que papel. A secretária vê tudo, confere e apaga; a
         equipe lança e corrige, sem os botões de executado e sem a lixeira.
@@ -3590,7 +3690,7 @@ function SecaoDeAcesso({ cadastros, avisar, eu }) {
           ))}
         </div>
       )}
-    </div>
+    </Bloco>
   );
 }
 
