@@ -3217,6 +3217,10 @@ function Bloco({ titulo, quantidade, aberto, aoAlternar, children }) {
           cursor: "pointer",
           textAlign: "left",
           font: "inherit",
+          // Sem cor declarada, o botão herda a do navegador — preto puro no
+          // Chrome e AZUL no iOS —, e o ícone, que desenha com `currentColor`,
+          // ia junto. Nenhum dos dois está na paleta.
+          color: CORES.tinta,
         }}
       >
         <span
@@ -3229,7 +3233,7 @@ function Bloco({ titulo, quantidade, aberto, aoAlternar, children }) {
         >
           {titulo}
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: ESPACO[2], flexShrink: 0 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: ESPACO[2], flexShrink: 0, color: CORES.suave }}>
           {quantidade !== undefined && (
             <span style={{ fontSize: TEXTO.miudo, color: CORES.tenue }}>{quantidade}</span>
           )}
