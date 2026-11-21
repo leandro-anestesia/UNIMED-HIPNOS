@@ -111,7 +111,11 @@ export default function Icone({ nome, tamanho = 16, espessura = 1.5, style }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      style={{ flexShrink: 0, ...style }}
+      // O desenho não recebe toque: ele é decoração, e quem precisa receber é
+      // o botão em volta. Sem isto, um toque que cai em cima do traço tem o
+      // svg como alvo, e o `aria-hidden` que o esconde do leitor de tela não
+      // o esconde do dedo.
+      style={{ flexShrink: 0, pointerEvents: "none", ...style }}
     >
       {DESENHOS[nome]}
     </svg>
