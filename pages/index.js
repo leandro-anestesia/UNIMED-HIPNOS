@@ -2830,6 +2830,7 @@ export default function Home() {
                 key={aba.chave}
                 onClick={() => setActiveTab(aba.chave)}
                 aria-current={ativa ? "page" : undefined}
+                className="aba-da-barra"
                 style={{
                   flex: 1,
                   minWidth: 0,
