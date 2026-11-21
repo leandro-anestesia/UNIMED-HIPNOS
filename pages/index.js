@@ -2542,8 +2542,15 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, borderTop: `1px solid ${CORES.bordaSuave}` }}>
-                        <div style={{ fontSize: TEXTO.apoio, flex: 1, paddingRight: 8 }}>
+                      {/* Procedimento em cima e os botões embaixo, na largura
+                          toda. Lado a lado, o texto do procedimento ficava com
+                          `flex: 1` e os quatro botões não encolhiam: a fileira
+                          nascia com a largura natural dos quatro, o `wrap` de
+                          dentro nunca entrava, e "Incompleto" e "Verificado"
+                          saíam pela borda do cartão. Empilhado, a fileira ganha
+                          a largura do cartão e quebra sozinha quando precisa. */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: ESPACO[2], paddingTop: 8, borderTop: `1px solid ${CORES.bordaSuave}` }}>
+                        <div style={{ fontSize: TEXTO.apoio }}>
                           {(e.procedimentos || []).join(SEPARADOR_PROCEDIMENTOS) || "(sem procedimento)"}
                         </div>
                         {podeConferirAqui && (
