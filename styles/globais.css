@@ -161,3 +161,82 @@ input[type="time"]::-webkit-date-and-time-value {
 .fileira-de-meses::-webkit-scrollbar {
   display: none;
 }
+
+/*
+ * A troca de aba, animada.
+ *
+ * Antes, a pílula do escolhido simplesmente aparecia: o toque acontecia e a
+ * tela já estava no outro estado, sem nada ligando um ao outro. A animação não
+ * é enfeite — é o que diz "foi este que você tocou", e num celular usado com
+ * pressa isso é a diferença entre conferir se o toque pegou e seguir em frente.
+ *
+ * São três coisas, e todas curtas: a pílula cresce no lugar em vez de piscar, o
+ * desenho dá um pulo e assenta, e o traço engrossa junto. Nada passa de 320ms,
+ * que é o limite do que ainda parece resposta e não espera.
+ *
+ * Os seletores começam em `nav` de propósito: o app já tem uma regra de toque
+ * em `.app button`, e sem a classe do `nav` ela venceria estas por
+ * especificidade — foi o que aconteceu na primeira tentativa. O `filter` e o
+ * `transform` daquela regra entram aqui de novo para não se perderem.
+ */
+nav .aba-da-barra {
+  transition: background-color 200ms ease, color 200ms ease, filter 80ms ease-out,
+    transform 80ms ease-out;
+  /* `tap-highlight` é o quadrado cinza que o iPhone pinta sozinho no toque;
+     com a pílula animada ele vira sujeira por cima da animação. */
+  -webkit-tap-highlight-color: transparent;
+}
+nav .aba-da-barra svg {
+  transition: stroke-width 200ms ease;
+}
+/* O pulo do desenho, só em quem acabou de virar a aba escolhida. A animação
+   dispara quando o seletor passa a casar, que é exatamente o momento do toque. */
+nav .aba-da-barra[aria-current="page"] svg {
+  animation: aba-escolhida 320ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+@keyframes aba-escolhida {
+  0% {
+    transform: scale(0.86);
+  }
+  55% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* A pílula nasce do centro em vez de aparecer inteira. */
+nav .aba-da-barra[aria-current="page"] {
+  animation: pilula-cresce 220ms ease-out;
+}
+@keyframes pilula-cresce {
+  from {
+    transform: scale(0.92);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+/* O toque afunda um pouco, como botão de verdade. */
+nav .aba-da-barra:active {
+  transform: scale(0.96);
+}
+
+/*
+ * Quem desligou animação no sistema não vê nenhuma delas.
+ *
+ * Não é detalhe de conformidade: há quem desligue por enjoo ou vertigem, e uma
+ * tela que pula a cada toque é exatamente o que essa pessoa pediu para não ver.
+ */
+@media (prefers-reduced-motion: reduce) {
+  nav .aba-da-barra,
+  nav .aba-da-barra svg,
+  nav .aba-da-barra[aria-current="page"],
+  nav .aba-da-barra[aria-current="page"] svg {
+    animation: none;
+    transition: none;
+  }
+  nav .aba-da-barra:active {
+    transform: none;
+  }
+}
