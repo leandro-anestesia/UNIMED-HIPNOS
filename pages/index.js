@@ -1575,7 +1575,7 @@ export default function Home() {
                 disabled={!localAtivo}
                 style={semLocal(btnEmpilhado(btnPrimary), localAtivo)}
               >
-                📋 Ler mapa cirúrgico
+                <Icone nome="mapa" tamanho={20} /> Ler mapa cirúrgico
               </button>
             ) : (
               <button
@@ -1583,7 +1583,7 @@ export default function Home() {
                 disabled={!localAtivo}
                 style={semLocal(btnEmpilhado(btnPrimary), localAtivo)}
               >
-                📷 Fotografar guia ou etiqueta
+                <Icone nome="camera" tamanho={20} /> Fotografar guia ou etiqueta
               </button>
             )}
 
@@ -1594,7 +1594,7 @@ export default function Home() {
                   disabled={!localAtivo}
                   style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
                 >
-                  📷 Fotografar etiqueta ou guia
+                  <Icone nome="camera" /> Fotografar etiqueta ou guia
                 </button>
               ) : (
                 <button
@@ -1602,7 +1602,7 @@ export default function Home() {
                   disabled={!localAtivo}
                   style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
                 >
-                  📋 Ler mapa cirúrgico
+                  <Icone nome="mapa" /> Ler mapa cirúrgico
                 </button>
               )}
               <button
@@ -1610,14 +1610,14 @@ export default function Home() {
                 disabled={!localAtivo}
                 style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
               >
-                🖼 Da galeria
+                <Icone nome="galeria" /> Da galeria
               </button>
               <button
                 onClick={startManual}
                 disabled={!localAtivo}
                 style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
               >
-                ✏️ Preencher manualmente
+                <Icone nome="lapis" /> Preencher manualmente
               </button>
             </div>
           </div>
@@ -2627,10 +2627,17 @@ export default function Home() {
             <a
               href="/secretaria"
               style={{
-                display: "block",
-                textAlign: "center",
+                // Flex, e não `block` com `text-align`: o ícone e o rótulo
+                // precisam ficar centrados juntos e alinhados pelo meio, não
+                // pela linha de base do texto.
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: ESPACO[2],
                 padding: ESPACO[3],
                 marginTop: ESPACO[2],
+                minHeight: ALVO,
+                boxSizing: "border-box",
                 borderRadius: 8,
                 border: `1px solid ${CORES.borda}`,
                 background: "white",
@@ -2640,7 +2647,7 @@ export default function Home() {
                 fontWeight: 500,
               }}
             >
-              📊 Área de conferência
+              <Icone nome="grafico" /> Área de conferência
             </a>
             )}
           </div>
