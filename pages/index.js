@@ -2041,8 +2041,13 @@ export default function Home() {
                         textDecoration: linha.incluido ? "none" : "line-through",
                       }}
                     />
-                    <button type="button" onClick={() => removeProcedimento(i)} style={{ ...iconBtn, color: CORES.alerta, flexShrink: 0 }}>
-                      🗑
+                    <button
+                      type="button"
+                      onClick={() => removeProcedimento(i)}
+                      aria-label="Remover procedimento"
+                      style={{ ...iconBtn, color: CORES.alerta, flexShrink: 0 }}
+                    >
+                      <Icone nome="lixo" tamanho={18} />
                     </button>
                   </div>
                 ))}
@@ -2236,13 +2241,24 @@ export default function Home() {
                 marginBottom: ESPACO[3],
               }}
             >
-            <input
-              style={{ ...inputStyle, marginBottom: 12 }}
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="🔎 Buscar por paciente, data, mês, procedimento, cirurgião ou anestesiologista"
-            />
+            {/* A lupa fica ao lado do campo, e não dentro do texto do
+                placeholder: escrita no texto, ela some assim que a pessoa
+                digita — justo quando o campo mais precisa dizer o que é. */}
+            <div style={{ position: "relative", marginBottom: 12 }}>
+              <Icone
+                nome="busca"
+                tamanho={17}
+                style={{ position: "absolute", left: 12, top: 13, color: CORES.tenue, pointerEvents: "none" }}
+              />
+              <input
+                style={{ ...inputStyle, paddingLeft: 38 }}
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar por paciente, data, mês, procedimento, cirurgião ou anestesiologista"
+                aria-label="Buscar por paciente, data, mês, procedimento, cirurgião ou anestesiologista"
+              />
+            </div>
 
             {/* Durante a busca o seletor fica esmaecido e sem efeito,
                 porque a procura roda em todos os meses. */}
@@ -2334,12 +2350,18 @@ export default function Home() {
                   onClick={sincronizarPlanilha}
                   disabled={sincronizando}
                   title="Sincronizar com a planilha do Google"
+                  aria-label="Sincronizar com a planilha do Google"
                   style={{ ...btnIcone, opacity: sincronizando ? 0.6 : 1 }}
                 >
-                  {sincronizando ? "…" : "🔄"}
+                  {sincronizando ? "…" : <Icone nome="atualizar" tamanho={17} />}
                 </button>
-                <button onClick={exportExcel} title="Baixar planilha do ano em Excel" style={btnIcone}>
-                  ⬇
+                <button
+                  onClick={exportExcel}
+                  title="Baixar planilha do ano em Excel"
+                  aria-label="Baixar planilha do ano em Excel"
+                  style={btnIcone}
+                >
+                  <Icone nome="baixar" tamanho={17} />
                 </button>
               </div>
             </div>
@@ -2494,7 +2516,7 @@ export default function Home() {
                           <button onClick={() => setViewingEntry(e)} style={iconBtn} title="Ver tudo">⋯</button>
                           <button onClick={() => startEdit(e)} style={iconBtn}>✎</button>
                           {podeApagarAqui && (
-                            <button onClick={() => deleteEntry(e.id)} style={{ ...iconBtn, color: CORES.alerta }}>🗑</button>
+                            <button onClick={() => deleteEntry(e.id)} aria-label="Apagar registro" style={{ ...iconBtn, color: CORES.alerta }}><Icone nome="lixo" tamanho={18} /></button>
                           )}
                         </div>
                       </div>
@@ -3129,7 +3151,7 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${CORES.borda}`, borderRadius: 6, background: "white", padding: "8px 12px" }}
             >
               <span style={{ fontSize: TEXTO.apoio }}>{n}</span>
-              <button onClick={() => onRemove(n)} style={{ ...iconBtn, color: CORES.alerta }}>🗑</button>
+              <button onClick={() => onRemove(n)} aria-label={`Remover ${n}`} style={{ ...iconBtn, color: CORES.alerta }}><Icone nome="lixo" tamanho={18} /></button>
             </div>
           ))}
         </div>
@@ -3754,7 +3776,7 @@ function SecaoDeAcesso({ cadastros, avisar, eu, aberto, aoAlternar }) {
                     onClick={() => apagar(p.usuario)}
                     style={{ ...btnDiscreto, flex: "0 0 auto", color: CORES.alerta }}
                   >
-                    🗑 Remover
+                    <Icone nome="lixo" tamanho={16} /> Remover
                   </button>
                 </div>
               )}
