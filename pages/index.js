@@ -25,7 +25,7 @@ import { ehDaVision, regrasDaVision } from "../lib/vision";
 import { osSoComplementares, recadoDoSoComplementar } from "../lib/procedimentos";
 import { chaveDeOrdem, ordenarRegistros } from "../lib/ordem";
 import { modeloDoRegistro } from "../lib/modelos";
-import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, corDoConvenio } from "../lib/marca";
+import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, VERSAO_VISIVEL, corDoConvenio } from "../lib/marca";
 import {
   DIGITOS_DO_PIN,
   PAPEIS,
@@ -4231,6 +4231,24 @@ function MeuAcesso({ eu, avisar, aoTerminar }) {
           </button>
         </div>
       )}
+
+      {/* A versão, no rodapé da caixa.
+      
+          Aqui porque é a única gaveta do app que já é sobre "este aparelho":
+          quem abre para sair ou trocar o PIN encontra, no mesmo lugar, qual
+          versão está rodando nele. No cabeçalho seria ruído permanente para
+          uma informação que se consulta uma vez por mês. */}
+      <div
+        style={{
+          marginTop: ESPACO[3],
+          paddingTop: ESPACO[2],
+          borderTop: `1px solid ${CORES.bordaSuave}`,
+          fontSize: TEXTO.miudo,
+          color: CORES.tenue,
+        }}
+      >
+        ver {VERSAO_VISIVEL}
+      </div>
     </div>
   );
 }
