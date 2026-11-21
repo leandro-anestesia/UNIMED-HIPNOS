@@ -2691,7 +2691,7 @@ export default function Home() {
                           )}
                         </div>
                         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                          <button onClick={() => setViewingEntry(e)} style={iconBtn} title="Ver tudo">⋯</button>
+                          <button onClick={() => setViewingEntry(e)} style={iconBtn} title="Ver tudo" aria-label="Ver tudo"><Icone nome="reticencias" tamanho={20} espessura={2.4} /></button>
                           <button onClick={() => startEdit(e)} aria-label="Editar registro" style={iconBtn}>
                             <Icone nome="lapis" tamanho={18} />
                           </button>
@@ -2892,7 +2892,7 @@ export default function Home() {
                 }}
                 style={{ ...btnSecondary, flex: 1 }}
               >
-                ⧉ Duplicar
+                <Icone nome="copiar" /> Duplicar
               </button>
               <button
                 onClick={() => {
