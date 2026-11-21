@@ -2924,7 +2924,12 @@ function Escolha({ campo, valor, onEscolher, grande }) {
         <button
           key={estado.valor}
           type="button"
-          onClick={() => onEscolher(estado.valor)}
+          // Tocar no que já está escolhido desmarca, e o campo volta ao padrão
+          // — em branco no Executado e no PC Executado. Sem isto, um toque
+          // errado ficava gravado: não havia como voltar atrás pela tela, e a
+          // correção virava assunto de planilha.
+          aria-pressed={atual === estado.valor}
+          onClick={() => onEscolher(atual === estado.valor ? padraoDe(campo) : estado.valor)}
           style={{
             ...execBtn,
             ...(atual === estado.valor
