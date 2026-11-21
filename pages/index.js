@@ -1220,7 +1220,8 @@ export default function Home() {
    * aparelho — abrir e fechar a aba dez vezes seguidas não vira dez leituras.
    *
    * Falha em silêncio de propósito: é um extra, e quem depende de ver o
-   * resultado aperta o 🔄. O que NÃO fica em silêncio é a recusa — se a
+   * resultado aperta o botão de sincronizar. O que NÃO fica em silêncio é a
+   * recusa — se a
    * planilha trouxe uma correção que o app não pôde aceitar, alguém precisa
    * saber, senão a pessoa que corrigiu a célula acha que valeu.
    */
@@ -1287,7 +1288,7 @@ export default function Home() {
           recusadas.map((x) => `· ${x.paciente || "(sem nome)"} — ${x.coluna}: ${x.motivo}`).join("\n")
         : "";
 
-      // O 🔄 acabou de trazer tudo: o relógio da leve recomeça daqui.
+      // A sincronização acabou de trazer tudo: o relógio da leve recomeça daqui.
       ultimaLeve.current = Date.now();
 
       if (data.configurado === false) {
@@ -1456,7 +1457,7 @@ export default function Home() {
               cursor: "pointer",
             }}
           >
-            {iniciaisDe(acesso)}
+            {iniciaisDe(acesso) || <Icone nome="pessoas" tamanho={18} />}
           </button>
         </div>
       </div>
@@ -1503,7 +1504,8 @@ export default function Home() {
               fontSize: TEXTO.apoio,
             }}
           >
-            ⚠ Não consegui carregar os registros ({falhaDeCarga}). A lista abaixo
+            <Icone nome="alerta" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+            Não consegui carregar os registros ({falhaDeCarga}). A lista abaixo
             não reflete o que está gravado — confira antes de lançar.
           </div>
         )}
@@ -1776,9 +1778,13 @@ export default function Home() {
                 disabled={salvando}
                 style={{ ...btnPrimary, flex: 2, opacity: salvando ? 0.6 : 1 }}
               >
-                {salvando
-                  ? "Salvando…"
-                  : `✓ Adicionar ${mapa.linhas.filter((l) => l.incluido).length} registro(s)`}
+                {salvando ? (
+                  "Salvando…"
+                ) : (
+                  <>
+                    <Icone nome="check" /> Adicionar {mapa.linhas.filter((l) => l.incluido).length} registro(s)
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1986,7 +1992,14 @@ export default function Home() {
                             avisoDaGuia.estado === "valida" || avisoDaGuia.estado === "completada" ? CORES.principal : CORES.alerta,
                         }}
                       >
-                        {avisoDaGuia.estado === "valida" || avisoDaGuia.estado === "completada" ? "✓ " : "⚠ "}
+                        <Icone
+                          nome={
+                            avisoDaGuia.estado === "valida" || avisoDaGuia.estado === "completada"
+                              ? "check"
+                              : "alerta"
+                          }
+                          style={{ verticalAlign: "-2px", marginRight: 4 }}
+                        />
                         {avisoDaGuia.mensagem}
                       </div>
                     )}
@@ -2207,14 +2220,20 @@ export default function Home() {
                 disabled={salvando}
                 style={{ ...btnSecondary, flex: 1, opacity: salvando ? 0.5 : 1 }}
               >
-                ✕ Cancelar
+                <Icone nome="fechar" /> Cancelar
               </button>
               <button
                 onClick={confirmEntry}
                 disabled={salvando}
                 style={{ ...btnPrimary, flex: 2, opacity: salvando ? 0.6 : 1, cursor: salvando ? "default" : "pointer" }}
               >
-                {salvando ? "Salvando…" : `✓ ${editingId ? "Salvar alterações" : "Adicionar ao controle"}`}
+                {salvando ? (
+                  "Salvando…"
+                ) : (
+                  <>
+                    <Icone nome="check" /> {editingId ? "Salvar alterações" : "Adicionar ao controle"}
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -2476,7 +2495,7 @@ export default function Home() {
                         para vê-lo desfaria a serventia de fechar. */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                       {estadoDe("executado", e.executado) === "sim" && (
-                        <span style={{ color: CORES.principal, fontSize: TEXTO.apoio, fontWeight: 700 }}>✓</span>
+                        <Icone nome="check" tamanho={15} espessura={2} style={{ color: CORES.principal }} />
                       )}
                       {/* O incompleto precisa de marca própria: sem ela, de fora
                           ele se confunde com o que não foi feito, que é o
@@ -2491,7 +2510,7 @@ export default function Home() {
                           VERIFICADO
                         </span>
                       )}
-                      <span style={{ color: CORES.tenue, fontSize: TEXTO.miudo }}>{aberto ? "▲" : "▼"}</span>
+                      <Icone nome={aberto ? "acima" : "abaixo"} tamanho={14} style={{ color: CORES.tenue }} />
                     </div>
                   </div>
 
@@ -2514,7 +2533,9 @@ export default function Home() {
                         </div>
                         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                           <button onClick={() => setViewingEntry(e)} style={iconBtn} title="Ver tudo">⋯</button>
-                          <button onClick={() => startEdit(e)} style={iconBtn}>✎</button>
+                          <button onClick={() => startEdit(e)} aria-label="Editar registro" style={iconBtn}>
+                            <Icone nome="lapis" tamanho={18} />
+                          </button>
                           {podeApagarAqui && (
                             <button onClick={() => deleteEntry(e.id)} aria-label="Apagar registro" style={{ ...iconBtn, color: CORES.alerta }}><Icone nome="lixo" tamanho={18} /></button>
                           )}
@@ -2665,7 +2686,9 @@ export default function Home() {
           >
             <div style={{ background: CORES.clara, padding: "12px 16px", borderBottom: `1px solid ${CORES.borda}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: TEXTO.apoio, fontWeight: 600 }}>Detalhes do registro</span>
-              <button onClick={() => setViewingEntry(null)} style={iconBtn}>✕</button>
+              <button onClick={() => setViewingEntry(null)} aria-label="Fechar" style={iconBtn}>
+                <Icone nome="fechar" tamanho={18} />
+              </button>
             </div>
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <ViewField label="Data do lançamento" value={formatarData(viewingEntry.dataCirurgia)} />
@@ -2713,7 +2736,7 @@ export default function Home() {
                 }}
                 style={{ ...btnPrimary, flex: 1 }}
               >
-                ✎ Editar
+                <Icone nome="lapis" /> Editar
               </button>
             </div>
           </div>
@@ -2761,12 +2784,11 @@ export default function Home() {
                 cursor: "pointer",
                 padding: 0,
                 flexShrink: 0,
-                fontSize: 16,
                 lineHeight: 1,
                 color: "inherit",
               }}
             >
-              ✕
+              <Icone nome="fechar" tamanho={16} />
             </button>
           )}
         </div>
@@ -3044,7 +3066,7 @@ function Bloco({ titulo, quantidade, aberto, aoAlternar, children }) {
           {quantidade !== undefined && (
             <span style={{ fontSize: TEXTO.miudo, color: CORES.tenue }}>{quantidade}</span>
           )}
-          <span style={{ fontSize: TEXTO.apoio, color: CORES.suave }}>{aberto ? "\u25b4" : "\u25be"}</span>
+          <Icone nome={aberto ? "acima" : "abaixo"} />
         </span>
       </button>
 
@@ -3116,7 +3138,8 @@ function CadastroSection({ title, placeholder, items, onAdd, onImportar, onRemov
           onClick={() => setAbrirLote((v) => !v)}
           style={{ ...btnSecondary, width: "100%", padding: "10px 12px", fontSize: TEXTO.apoio }}
         >
-          {abrirLote ? "▴ Fechar importação" : "▾ Colar uma lista de nomes"}
+          <Icone nome={abrirLote ? "acima" : "abaixo"} />{" "}
+          {abrirLote ? "Fechar importação" : "Colar uma lista de nomes"}
         </button>
 
         {abrirLote && (
@@ -3634,7 +3657,8 @@ function SecaoDeAcesso({ cadastros, avisar, eu, aberto, aoAlternar }) {
         onClick={() => setAbrirTrazer((v) => !v)}
         style={{ ...btnSecondary, width: "100%", padding: "10px 12px", fontSize: TEXTO.apoio, marginBottom: ESPACO[3] }}
       >
-        {abrirTrazer ? "▴ Fechar" : "▾ Trazer do cadastro de anestesiologistas"}
+        <Icone nome={abrirTrazer ? "acima" : "abaixo"} />{" "}
+        {abrirTrazer ? "Fechar" : "Trazer do cadastro de anestesiologistas"}
       </button>
 
       {abrirTrazer && (
@@ -3762,9 +3786,10 @@ function SecaoDeAcesso({ cadastros, avisar, eu, aberto, aoAlternar }) {
                       setPinDe(null);
                       setPinNovo("");
                     }}
+                    aria-label="Cancelar"
                     style={{ ...btnSecondary, flex: "0 0 auto", padding: "8px 12px" }}
                   >
-                    ✕
+                    <Icone nome="fechar" tamanho={16} />
                   </button>
                 </div>
               ) : (
@@ -3872,7 +3897,8 @@ function CodigoDeCopia({ avisar }) {
         disabled={ocupado}
         style={{ ...btnSecondary, width: "100%", padding: "10px 12px", fontSize: TEXTO.apoio }}
       >
-        {codigo ? "▾ Gerar outro código de cópia" : "▾ Código para copiar os pacientes (app de teste)"}
+        <Icone nome="abaixo" />{" "}
+        {codigo ? "Gerar outro código de cópia" : "Código para copiar os pacientes (app de teste)"}
       </button>
 
       {codigo && (
@@ -3919,13 +3945,15 @@ function CodigoDeCopia({ avisar }) {
  * primeira pergunta é "estou logado como quem?", e um bonequinho não responde.
  */
 function iniciaisDe(eu) {
-  if (!eu) return "👤";
+  // Sem ninguém, não há inicial: devolve vazio, e o botão desenha o ícone de
+  // pessoa no lugar — um emoji ali mudava de desenho em cada aparelho.
+  if (!eu) return "";
 
   const palavras = (eu.nome || "").trim().split(/\s+/).filter(Boolean);
   if (palavras.length >= 2) return (palavras[0][0] + palavras[palavras.length - 1][0]).toUpperCase();
   if (palavras.length === 1) return palavras[0].slice(0, 2).toUpperCase();
 
-  return (eu.usuario || "").replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "👤";
+  return (eu.usuario || "").replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase();
 }
 
 /**
