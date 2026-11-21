@@ -240,3 +240,26 @@ nav .aba-da-barra:active {
     transform: none;
   }
 }
+
+/* ── A fita de atualização ──────────────────────────────────────────────────
+   Três pixels que varrem enquanto o app busca o que há de novo. Indeterminada
+   de propósito: não dá para prometer uma porcentagem de uma ida ao servidor, e
+   barra que finge saber o progresso é pior do que barra que não diz nada. */
+.fita-de-atualizacao > div {
+  animation: fita-varre 1100ms ease-in-out infinite;
+}
+
+@keyframes fita-varre {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+/* Para quem pediu menos movimento, a fita fica parada e preenchida: continua
+   dizendo "estou buscando", sem nada se mexendo na borda do olho. */
+@media (prefers-reduced-motion: reduce) {
+  .fita-de-atualizacao > div {
+    animation: none;
+    width: 100%;
+    opacity: 0.6;
+  }
+}
