@@ -425,6 +425,14 @@ export default function Home() {
   // O mapa lido, esperando conferência: { data, anestesista, linhas: [...] }.
   const [mapa, setMapa] = useState(null);
 
+  // A lista sendo buscada de novo em segundo plano, na volta ao app. Vira a
+  // barrinha do topo, e nada mais: a tela continua inteira e utilizável.
+  const [atualizando, setAtualizando] = useState(false);
+  // Saiu publicação nova e este app ficou para trás.
+  const [versaoNova, setVersaoNova] = useState("");
+  // Recarregando de propósito, com a tela por cima dizendo isso.
+  const [recarregando, setRecarregando] = useState(false);
+
   const loadEntries = useCallback(async () => {
     try {
       const r = await fetch("/api/entries");
@@ -502,6 +510,87 @@ export default function Home() {
   }, [conferirAcesso]);
 
   /**
+   * O que ainda não está gravado em lugar nenhum.
+   *
+   * É o que impede o app de se recarregar sozinho por cima de trabalho: uma
+   * guia recém-lida, um mapa em conferência, um registro em edição. Recarregar
+   * ali apagaria uma leitura que custou foto, espera e conferência.
+   *
+   * A data, a hora e o local ficam de fora: os três já vêm preenchidos num
+   * formulário que ninguém tocou, e contá-los faria todo app parecer ocupado.
+   */
+  const temTrabalhoNaoSalvo = useCallback(() => {
+    if (salvando || mapa || imagePreview || editingId) return true;
+    const vazio = emptyDraft();
+    const ignorar = new Set(["dataCirurgia", "horaLancamento", "local"]);
+    return Object.keys(vazio).some((k) => {
+      if (ignorar.has(k)) return false;
+      const agora = draft[k];
+      if (Array.isArray(agora)) return agora.length > 0;
+      return (agora || "") !== (vazio[k] || "");
+    });
+  }, [salvando, mapa, imagePreview, editingId, draft]);
+
+  /**
+   * Este app ficou para trás?
+   *
+   * Cada publicação na Vercel é imutável e carrega a própria identidade. O que
+   * está aberto no aparelho responde com a versão dele; a rota do domínio
+   * responde a da publicação no ar. Diferentes, saiu coisa nova.
+   */
+  const conferirVersao = useCallback(async () => {
+    const minha = process.env.VERSAO_DO_APP || "dev";
+    try {
+      const r = await fetch("/api/versao");
+      if (!r.ok) return;
+      const { versao } = await r.json();
+      if (!versao || versao === minha) return;
+
+      // Já recarreguei uma vez por esta mesma versão e continuo velho: alguma
+      // coisa está servindo o app antigo. Recarregar de novo viraria laço —
+      // melhor avisar e deixar a pessoa decidir.
+      let jaTentei = "";
+      try {
+        jaTentei = window.sessionStorage.getItem("hipnos_recarreguei_para") || "";
+      } catch (e) {
+        jaTentei = "";
+      }
+      if (jaTentei === versao || temTrabalhoNaoSalvo()) {
+        setVersaoNova(versao);
+        return;
+      }
+      try {
+        window.sessionStorage.setItem("hipnos_recarreguei_para", versao);
+      } catch (e) {
+        // Navegador sem armazenamento: segue sem a trava, e o aviso abaixo
+        // continua sendo a saída se o recarregar não resolver.
+      }
+      setRecarregando(true);
+      // Um instante para a tela de "atualizando" aparecer antes de a página
+      // ir embora: recarregar em branco parece travamento.
+      setTimeout(() => window.location.reload(), 400);
+    } catch (e) {
+      // Sem rede não há versão nova a descobrir, e isso não é erro de nada.
+    }
+  }, [temTrabalhoNaoSalvo]);
+
+  /**
+   * A lista, de novo, sem tirar a tela de ninguém.
+   *
+   * Enquanto se salva, não: a resposta do servidor ainda está a caminho, e
+   * sobrescrever a lista no meio disso faria o registro recém-lançado piscar.
+   */
+  const atualizarDados = useCallback(async () => {
+    if (salvandoRef.current) return;
+    setAtualizando(true);
+    try {
+      await Promise.all([loadEntries(), loadCadastros()]);
+    } finally {
+      setAtualizando(false);
+    }
+  }, [loadEntries, loadCadastros]);
+
+  /**
    * E de novo toda vez que o app volta do congelador.
    *
    * Sem isto, a tranca parecia não valer para quem já tinha o app aberto. O
@@ -519,7 +608,12 @@ export default function Home() {
     function aoVoltar(evento) {
       if (evento.type === "pageshow" && !evento.persisted) return;
       if (evento.type === "visibilitychange" && document.visibilityState !== "visible") return;
+      // Quem está logado, o que há de novo na lista, e se este app ficou para
+      // trás. Os três na volta, porque é exatamente aí que a tela devolvida da
+      // memória está mais velha do que parece.
       conferirAcesso();
+      atualizarDados();
+      conferirVersao();
     }
 
     window.addEventListener("pageshow", aoVoltar);
@@ -528,7 +622,7 @@ export default function Home() {
       window.removeEventListener("pageshow", aoVoltar);
       document.removeEventListener("visibilitychange", aoVoltar);
     };
-  }, [conferirAcesso]);
+  }, [conferirAcesso, atualizarDados, conferirVersao]);
 
   // A recusa da tela da secretaria chega por aqui: o middleware devolve para
   // cá com `?negado`, em vez de deixar a tela em branco sem explicação.
@@ -1411,6 +1505,41 @@ export default function Home() {
 
   return (
     <div style={{ minHeight: "100vh", background: CORES.fundo, color: CORES.tinta, paddingBottom: `calc(${ALTURA_DA_BARRA + ESPACO[4]}px + env(safe-area-inset-bottom))` }}>
+      {/* A atualização em segundo plano, na volta ao app.
+
+          Três pixels no topo, e nada mais: a lista continua na tela e
+          utilizável enquanto chega a versão nova dela. Um giro no meio da tela
+          ou uma tela de carregamento transformariam cada troca de app — e num
+          plantão são dezenas — numa espera. */}
+      {atualizando && !recarregando && (
+        <div
+          className="fita-de-atualizacao"
+          role="status"
+          aria-label="Atualizando"
+          style={{ position: "fixed", top: 0, left: 0, right: 0, height: 3, zIndex: 60, overflow: "hidden", background: "rgba(255,255,255,0.18)" }}
+        >
+          <div style={{ height: "100%", width: "40%", background: `linear-gradient(90deg, ${CORES.principal}, ${CORES.acento})` }} />
+        </div>
+      )}
+
+      {/* Recarregando de propósito: aqui a espera existe mesmo, e esconder
+          isso faria o app parecer travado no instante em que some. */}
+      {recarregando && (
+        <div
+          role="status"
+          style={{
+            position: "fixed", inset: 0, zIndex: 100, background: CORES.escura,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: ESPACO[4],
+          }}
+        >
+          <img src="/logo-mark.png" alt="" style={{ height: 56, width: "auto", objectFit: "contain" }} />
+          <div style={{ color: CORES.sobreEscura, fontSize: TEXTO.corpo }}>Atualizando o app…</div>
+          <div className="fita-de-atualizacao" style={{ width: 180, height: 3, borderRadius: 2, overflow: "hidden", background: "rgba(255,255,255,0.18)" }}>
+            <div style={{ height: "100%", width: "40%", background: `linear-gradient(90deg, ${CORES.principal}, ${CORES.acento})` }} />
+          </div>
+        </div>
+      )}
+
       <div style={{ background: CORES.escura, padding: "20px 20px 24px", position: "relative" }}>
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${CORES.principal}, ${CORES.acento})` }} />
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1488,6 +1617,36 @@ export default function Home() {
             <MeuAcesso eu={acesso} avisar={avisar} aoTerminar={() => setMenuDoAcesso(false)} />
           </div>
         </>
+      )}
+
+      {/* Saiu versão nova, mas há coisa não salva na tela — ou recarregar já
+          foi tentado e não resolveu. Nos dois casos quem decide é a pessoa:
+          perder uma guia lida para ganhar a versão nova não é troca que o app
+          possa fazer sozinho. */}
+      {versaoNova && !recarregando && (
+        <div style={{ maxWidth: 640, margin: "0 auto", padding: "12px 16px 0" }}>
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: ESPACO[3], flexWrap: "wrap",
+              padding: "10px 12px", borderRadius: 10,
+              background: CORES.clara, border: `1px solid ${CORES.borda}`,
+              fontSize: TEXTO.apoio,
+            }}
+          >
+            <Icone nome="atualizar" tamanho={16} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 140 }}>Há uma versão nova do app.</span>
+            <button
+              type="button"
+              onClick={() => {
+                setRecarregando(true);
+                setTimeout(() => window.location.reload(), 400);
+              }}
+              style={{ ...btnPrimary, padding: "8px 14px", fontSize: TEXTO.apoio, minHeight: 0 }}
+            >
+              Atualizar agora
+            </button>
+          </div>
+        </div>
       )}
 
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 16px" }}>

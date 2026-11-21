@@ -1,6 +1,22 @@
+/**
+ * A identidade desta publicação.
+ *
+ * A Vercel entrega o commit publicado em `VERCEL_GIT_COMMIT_SHA`, e `env` o
+ * grava dentro do pacote — tanto no JavaScript que roda no celular quanto na
+ * rota que responde do servidor. Como cada publicação é imutável, o app que
+ * está aberto no aparelho carrega a versão dele, e a rota do domínio responde
+ * sempre a da publicação no ar: diferentes, saiu versão nova.
+ *
+ * Fora da Vercel (desenvolvimento) não há commit, e "dev" nos dois lados faz
+ * a comparação dizer, corretamente, que não há nada a atualizar.
+ */
+const VERSAO = process.env.VERCEL_GIT_COMMIT_SHA || "dev";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  env: { VERSAO_DO_APP: VERSAO },
 
   /**
    * O HTML da página nunca fica em cache.
