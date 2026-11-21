@@ -1,5 +1,5 @@
 import { nomeCurtoDoConvenio, semCodigoNaFrente } from "../../lib/convenios";
-import { PROCEDIMENTOS_IGNORADOS, semOsIgnorados } from "../../lib/procedimentos";
+import { IGNORADOS_POR_CODIGO, IGNORADOS_POR_TEXTO, semOsIgnorados } from "../../lib/procedimentos";
 import { semTratamento } from "../../lib/texto";
 import { exigir } from "../../lib/guarda";
 
@@ -80,7 +80,8 @@ Como preencher cada campo:
 
 - "procedimentos": uma entrada para cada linha da tabela "Procedimentos ou Itens Assistenciais Solicitados", juntando a coluna "35 - Código do Procedimento" com a "36 - Descrição", no formato "CÓDIGO - DESCRIÇÃO". Exemplo: "31309127 - PARTO (VIA VAGINAL)".
   A descrição às vezes ocupa duas linhas na impressão: junte os pedaços numa entrada só.
-  IGNORE as linhas que não entram neste controle: ${PROCEDIMENTOS_IGNORADOS.map((t) => t.nome.toUpperCase()).join(", ")}. As três primeiras são item do hospital, e não ato anestésico; a última é a própria anestesia, que a equipe não lança como procedimento. Basta o termo aparecer em qualquer parte da descrição — "99996666 - INTERNACAO", "DIÁRIA DE INTERNAÇÃO", "VISITA HOSPITALAR (POR DIA)" — para a linha ficar fora da lista.
+  IGNORE as linhas que não entram neste controle: ${IGNORADOS_POR_TEXTO.map((t) => t.nome.toUpperCase()).join(", ")}. São item do hospital, e não ato anestésico, ou a própria anestesia, que a equipe não lança como procedimento. Basta o termo aparecer em qualquer parte da descrição — "99996666 - INTERNACAO", "DIÁRIA DE INTERNAÇÃO", "VISITA HOSPITALAR (POR DIA)" — para a linha ficar fora da lista.
+  IGNORE também, pelo CÓDIGO e seja qual for a descrição ao lado, as linhas que começarem com: ${IGNORADOS_POR_CODIGO.map((t) => t.codigo).join(", ")}.
   IGNORE POR COMPLETO a seção "Gabaritos Solicitados", que vem logo abaixo e tem aparência de tabela igual: gabarito é pacote de cobrança, não é procedimento, e não pode entrar na lista.
   Se a linha tiver descrição mas o código estiver ilegível, devolva só a descrição.
 
