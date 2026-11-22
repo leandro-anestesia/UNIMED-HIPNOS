@@ -25,7 +25,7 @@ import { ehDaVision, regrasDaVision } from "../lib/vision";
 import { osSoComplementares, recadoDoSoComplementar } from "../lib/procedimentos";
 import { chaveDeOrdem, ordenarRegistros } from "../lib/ordem";
 import { modeloDoRegistro } from "../lib/modelos";
-import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, VERSAO_VISIVEL, corDoConvenio } from "../lib/marca";
+import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, VERSAO_VISIVEL, corDoConvenio, fundoDoConvenio } from "../lib/marca";
 import {
   DIGITOS_DO_PIN,
   PAPEIS,
@@ -2624,6 +2624,10 @@ export default function Home() {
                             fontWeight: 600,
                             letterSpacing: "0.04em",
                             display: "flex",
+                            // Centro com centro: a etiqueta tem contorno e
+                            // recheio, então é mais alta que a data ao lado.
+                            // Alinhadas pelo topo, a data parecia ter subido.
+                            alignItems: "center",
                             gap: 6,
                             minWidth: 0,
                           }}
@@ -2633,10 +2637,19 @@ export default function Home() {
                               {formatarData(e.dataCirurgia)}
                             </span>
                           )}
+                          {/* Etiqueta, e não texto colorido: a cor sozinha
+                              some num relance por uma lista de vinte cartões,
+                              e o contorno dá ao convênio um lugar fixo para o
+                              olho pousar. */}
                           {e.convenio && (
                             <span
                               style={{
                                 color: corDoConvenio(e.convenio) || CORES.suave,
+                                background: fundoDoConvenio(e.convenio) || "transparent",
+                                border: `1px solid ${corDoConvenio(e.convenio) || CORES.borda}`,
+                                borderRadius: 999,
+                                padding: "1px 8px",
+                                minWidth: 0,
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
@@ -2676,13 +2689,35 @@ export default function Home() {
                   {aberto && (
                     <>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: TEXTO.miudo, color: CORES.suave }}>
-                            {formatarData(e.dataCirurgia)}
-                            {horaDoRegistro(e) ? ` · ${horaDoRegistro(e)}` : ""}
-                            {e.cirurgiao ? ` · Dr(a). ${e.cirurgiao}` : ""}
-                            {e.anestesista ? ` · Anest. Dr(a). ${e.anestesista}` : ""}
-                          </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          {/* Hora e clínica em negrito, numa linha só: é o que
+                              situa o caso — quando foi e onde foi. A data não
+                              entra porque já está no cabeçalho, ao lado do
+                              nome, e repetida aqui só roubaria peso do que
+                              esta linha existe para dizer. */}
+                          {(horaDoRegistro(e) || e.local) && (
+                            <div style={{ fontSize: TEXTO.apoio, fontWeight: 700, color: CORES.tinta }}>
+                              {[horaDoRegistro(e), e.local].filter(Boolean).join(" · ")}
+                            </div>
+                          )}
+                          {/* Os dois médicos, sem negrito e em tom de apoio:
+                              são o segundo olhar, não o primeiro. Cirurgião em
+                              cima, anestesiologista embaixo.
+
+                              O "Anest." continua na segunda linha. Sem ele as
+                              duas viram "Dr(a). Fulano" e "Dr(a). Beltrano", e
+                              não há como saber quem é quem — justamente o que
+                              se procura ao conferir um registro. */}
+                          {e.cirurgiao && (
+                            <div style={{ fontSize: TEXTO.apoio, color: CORES.suave, marginTop: 2 }}>
+                              Dr(a). {e.cirurgiao}
+                            </div>
+                          )}
+                          {e.anestesista && (
+                            <div style={{ fontSize: TEXTO.apoio, color: CORES.suave }}>
+                              Anest. Dr(a). {e.anestesista}
+                            </div>
+                          )}
                           <LinhaDeIdentificacao entry={e} />
                           {(e.procedimentoComplementar || []).length > 0 && (
                             <div style={{ fontSize: TEXTO.miudo, color: CORES.principal, marginTop: 4 }}>
@@ -2690,14 +2725,36 @@ export default function Home() {
                             </div>
                           )}
                         </div>
-                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                          <button onClick={() => setViewingEntry(e)} style={iconBtn} title="Ver tudo" aria-label="Ver tudo"><Icone nome="reticencias" tamanho={20} espessura={2.4} /></button>
-                          <button onClick={() => startEdit(e)} aria-label="Editar registro" style={iconBtn}>
+                        {/* Os botões empilhados na borda direita, e não em
+                            fileira sobre o texto: assim eles ocupam a faixa que
+                            já era margem, o texto ganha a largura toda, e o
+                            polegar os encontra sempre no mesmo lugar, seja qual
+                            for o tamanho do cartão. */}
+                        {/* A caixa de cada botão é mais baixa que o alvo
+                            padrão: 44px de altura com um glifo de 18px deixavam
+                            13px vazios acima do lápis, 13px abaixo da lupa e 28
+                            entre os dois, e a coluna ficava com 90px contra uns
+                            50 de texto.
+
+                            A largura continua 44 — o dedo erra mais de lado do
+                            que de cima —, e os dois são ações mansas: abrir o
+                            editor e abrir o registro. Um toque entre eles não
+                            apaga nada. */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 0, flexShrink: 0, alignItems: "center" }}>
+                          <button onClick={() => startEdit(e)} aria-label="Editar registro" style={{ ...iconBtn, height: 34 }}>
                             <Icone nome="lapis" tamanho={18} />
                           </button>
-                          {podeApagarAqui && (
-                            <button onClick={() => deleteEntry(e.id)} aria-label="Apagar registro" style={{ ...iconBtn, color: CORES.alerta }}><Icone nome="lixo" tamanho={18} /></button>
-                          )}
+                          {/* Lupa com `+`, e não reticências: reticências é
+                              "mais opções", e o que este botão faz é abrir o
+                              registro inteiro. */}
+                          <button onClick={() => setViewingEntry(e)} style={{ ...iconBtn, height: 34 }} title="Ver tudo" aria-label="Ver tudo"><Icone nome="lupaMais" tamanho={19} /></button>
+                          {/* Apagar não mora aqui: mora no "ver tudo".
+
+                              Três alvos somavam coluna demais contra umas três
+                              linhas de texto, e o cartão ganhava dois dedos de
+                              branco. E apagar um registro é raro e não tem
+                              volta — um nível a mais é proteção, não atrito,
+                              ainda mais ao lado do lápis. */}
                         </div>
                       </div>
 
@@ -2905,6 +2962,25 @@ export default function Home() {
                 <Icone nome="lapis" /> Editar
               </button>
             </div>
+
+            {/* Apagar em linha própria, separado por um filete e no vermelho de
+                alerta: é o que não tem volta, e não pode dividir fileira com
+                "Fechar" e "Editar", onde um polegar apressado erra o alvo. */}
+            {podeApagarAqui && (
+              <div style={{ padding: "0 16px 16px" }}>
+                <div style={{ borderTop: `1px solid ${CORES.bordaSuave}`, marginBottom: ESPACO[3] }} />
+                <button
+                  onClick={() => {
+                    const entry = viewingEntry;
+                    setViewingEntry(null);
+                    deleteEntry(entry.id);
+                  }}
+                  style={{ ...btnSecondary, width: "100%", color: CORES.alerta }}
+                >
+                  <Icone nome="lixo" tamanho={16} /> Apagar registro
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -3075,21 +3151,14 @@ function LinhaDeIdentificacao({ entry }) {
     entry.nCarteira ? `Carteira: ${entry.nCarteira}` : "",
   ].filter(Boolean);
 
-  const convenio = (entry.convenio || "").trim();
-  const local = (entry.local || "").trim();
-  if (numeros.length === 0 && !convenio && !local) return null;
-
-  const cor = corDoConvenio(convenio);
+  // Só os números. O convênio virou etiqueta no cabeçalho do cartão e o local
+  // subiu para a linha em negrito: repeti-los aqui seria dizer duas vezes a
+  // mesma coisa, a dois centímetros de distância.
+  if (numeros.length === 0) return null;
 
   return (
     <div style={{ fontSize: TEXTO.miudo, color: CORES.suave, marginTop: 2 }}>
       {numeros.join(" · ")}
-      {numeros.length > 0 && convenio ? " · " : ""}
-      {/* Só o nome do convênio muda de cor; os números continuam discretos. */}
-      {convenio && <span style={{ color: cor || "inherit", fontWeight: cor ? 600 : 400 }}>{convenio}</span>}
-      {/* O local agora existe sempre, e diz onde a cirurgia foi — é parte do
-          que se procura ao percorrer a lista. */}
-      {local && ((numeros.length > 0 || convenio ? " · " : "") + local)}
     </div>
   );
 }
