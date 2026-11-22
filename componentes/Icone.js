@@ -17,6 +17,17 @@ const DESENHOS = {
       <path d="M13.5 13.5L17 17" />
     </>
   ),
+  /* Lupa com `+`: "ver mais deste registro". A lupa sozinha já quer dizer
+     "buscar" no campo logo acima da lista — o `+` é o que separa as duas
+     leituras. Mesma lupa do `busca`, para as duas serem reconhecidas como a
+     mesma família. */
+  lupaMais: (
+    <>
+      <circle cx="9" cy="9" r="6" />
+      <path d="M13.5 13.5L17 17" />
+      <path d="M9 6.5v5M6.5 9h5" />
+    </>
+  ),
   calendario: (
     <>
       <rect x="3" y="4.5" width="14" height="13" rx="2" />
