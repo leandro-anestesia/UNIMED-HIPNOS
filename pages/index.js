@@ -2624,6 +2624,10 @@ export default function Home() {
                             fontWeight: 600,
                             letterSpacing: "0.04em",
                             display: "flex",
+                            // Centro com centro: a etiqueta tem contorno e
+                            // recheio, então é mais alta que a data ao lado.
+                            // Alinhadas pelo topo, a data parecia ter subido.
+                            alignItems: "center",
                             gap: 6,
                             minWidth: 0,
                           }}
@@ -2726,17 +2730,31 @@ export default function Home() {
                             já era margem, o texto ganha a largura toda, e o
                             polegar os encontra sempre no mesmo lugar, seja qual
                             for o tamanho do cartão. */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0, alignItems: "center" }}>
-                          <button onClick={() => startEdit(e)} aria-label="Editar registro" style={iconBtn}>
+                        {/* A caixa de cada botão é mais baixa que o alvo
+                            padrão: 44px de altura com um glifo de 18px deixavam
+                            13px vazios acima do lápis, 13px abaixo da lupa e 28
+                            entre os dois, e a coluna ficava com 90px contra uns
+                            50 de texto.
+
+                            A largura continua 44 — o dedo erra mais de lado do
+                            que de cima —, e os dois são ações mansas: abrir o
+                            editor e abrir o registro. Um toque entre eles não
+                            apaga nada. */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 0, flexShrink: 0, alignItems: "center" }}>
+                          <button onClick={() => startEdit(e)} aria-label="Editar registro" style={{ ...iconBtn, height: 34 }}>
                             <Icone nome="lapis" tamanho={18} />
                           </button>
                           {/* Lupa com `+`, e não reticências: reticências é
                               "mais opções", e o que este botão faz é abrir o
                               registro inteiro. */}
-                          <button onClick={() => setViewingEntry(e)} style={iconBtn} title="Ver tudo" aria-label="Ver tudo"><Icone nome="lupaMais" tamanho={19} /></button>
-                          {podeApagarAqui && (
-                            <button onClick={() => deleteEntry(e.id)} aria-label="Apagar registro" style={{ ...iconBtn, color: CORES.alerta }}><Icone nome="lixo" tamanho={18} /></button>
-                          )}
+                          <button onClick={() => setViewingEntry(e)} style={{ ...iconBtn, height: 34 }} title="Ver tudo" aria-label="Ver tudo"><Icone nome="lupaMais" tamanho={19} /></button>
+                          {/* Apagar não mora aqui: mora no "ver tudo".
+
+                              Três alvos somavam coluna demais contra umas três
+                              linhas de texto, e o cartão ganhava dois dedos de
+                              branco. E apagar um registro é raro e não tem
+                              volta — um nível a mais é proteção, não atrito,
+                              ainda mais ao lado do lápis. */}
                         </div>
                       </div>
 
@@ -2944,6 +2962,25 @@ export default function Home() {
                 <Icone nome="lapis" /> Editar
               </button>
             </div>
+
+            {/* Apagar em linha própria, separado por um filete e no vermelho de
+                alerta: é o que não tem volta, e não pode dividir fileira com
+                "Fechar" e "Editar", onde um polegar apressado erra o alvo. */}
+            {podeApagarAqui && (
+              <div style={{ padding: "0 16px 16px" }}>
+                <div style={{ borderTop: `1px solid ${CORES.bordaSuave}`, marginBottom: ESPACO[3] }} />
+                <button
+                  onClick={() => {
+                    const entry = viewingEntry;
+                    setViewingEntry(null);
+                    deleteEntry(entry.id);
+                  }}
+                  style={{ ...btnSecondary, width: "100%", color: CORES.alerta }}
+                >
+                  <Icone nome="lixo" tamanho={16} /> Apagar registro
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
