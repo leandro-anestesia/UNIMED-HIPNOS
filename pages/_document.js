@@ -1,16 +1,26 @@
 import { Html, Head, Main, NextScript } from "next/document";
-import { CORES, EQUIPE, TITULO, TITULO_CURTO } from "../lib/marca";
+import { COR_DO_NAVEGADOR, EQUIPE, TITULO, TITULO_CURTO } from "../lib/marca";
 
 export default function Document() {
   return (
     <Html lang="pt-BR">
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-        <meta name="theme-color" content={CORES.escura} />
+        <meta name="theme-color" content={COR_DO_NAVEGADOR} />
         <meta name="description" content={`${TITULO} — ${EQUIPE}`} />
         {/* Dados de saúde: fora de buscadores. */}
         <meta name="robots" content="noindex, nofollow" />
         <title>{`${TITULO} · ${EQUIPE}`}</title>
+
+        {/* Inter, a fonte do app do celular. `display=swap` porque o app abre
+            no centro cirúrgico com rede ruim: melhor o texto na fonte do
+            sistema agora do que nada até a Inter chegar. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+        />
 
         <link rel="icon" href="/favicon.png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
