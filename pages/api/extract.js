@@ -2,6 +2,7 @@ import { nomeCurtoDoConvenio, semCodigoNaFrente } from "../../lib/convenios";
 import { IGNORADOS_POR_CODIGO, IGNORADOS_POR_TEXTO, semOsIgnorados } from "../../lib/procedimentos";
 import { semTratamento } from "../../lib/texto";
 import { exigir } from "../../lib/guarda";
+import { textoDaResposta } from "../../lib/resposta-da-ia";
 
 export const config = {
   api: {
@@ -174,7 +175,12 @@ export default async function handler(req, res) {
         model: "claude-sonnet-5",
         // A tabela de procedimentos pode ter várias linhas, cada uma com a
         // descrição TUSS inteira; 1000 tokens cortavam o JSON no meio.
-        max_tokens: 2000,
+        //
+        // E o raciocínio do modelo sai deste mesmo teto (ver
+        // `lib/resposta-da-ia.js`): 2000 funcionavam para a guia de sempre, mas
+        // uma guia carregada esbarraria no mesmo defeito que derrubou a leitura
+        // do mapa em PDF — resposta sem bloco de texto, sem dizer por quê.
+        max_tokens: 16000,
         messages: [
           {
             role: "user",
@@ -194,12 +200,12 @@ export default async function handler(req, res) {
       return res.status(r.status).json({ error: msg });
     }
 
-    const textBlock = (data.content || []).find((b) => b.type === "text");
-    if (!textBlock) {
-      return res.status(502).json({ error: "Resposta da API sem bloco de texto" });
+    const lido = textoDaResposta(data);
+    if (lido.erro) {
+      return res.status(502).json({ error: lido.erro });
     }
 
-    let clean = textBlock.text.replace(/```json|```/g, "").trim();
+    let clean = lido.texto.replace(/```json|```/g, "").trim();
     const match = clean.match(/\{[\s\S]*\}/);
     if (match) clean = match[0];
 

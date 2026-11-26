@@ -47,6 +47,71 @@
    * e a que faz diferença numa tela usada em pé, de luva, com pressa.
    */
   --alvo: 44px;
+
+  /*
+   * As cores. Moram aqui, e não em lib/marca.js, porque estilo em linha não
+   * alcança `@media`. O JS continua exportando `CORES`, mas cada entrada é
+   * `var(--…)` apontando para cá. Os nomes são os de CLAUDE.md, seção 2.
+   *
+   * Superfícies neutras: o bege saiu. A marca vive no acento, não no papel —
+   * quando tudo é dourado, nada é. Só o tema claro; o escuro fica para depois.
+   */
+
+  /* O dourado da Hipnos: preenchimento, estado, foco. Nunca texto: 2,8:1. */
+  --acento: #b8963e;
+  /* Quando o acento vira texto — link, contagem ativa. 4,9:1 sobre branco. */
+  --acento-texto: #8c6d1e;
+  /* Texto sobre o dourado. Preto: o branco dá 2,2:1, o preto 7,5:1. */
+  --acento-tinta: #1a1a1c;
+  /* Fundos suaves: item ativo, faixa de dica. Dourado bem diluído. */
+  --acento-fundo: #faf4e6;
+  --acento-borda: #ebdcb6;
+
+  /* O cabeçalho preto do app do celular, e o que vai em cima dele. */
+  --cabecalho: #1a1a1a;
+  --sobre-cabecalho: #ffffff;
+  /* A linha fina e os textos de apoio sobre o cabeçalho. */
+  --cabecalho-acento: #d9c286;
+
+  /* Texto: principal, secundário (rótulos, metadados), terciário (contagens). */
+  --tinta-1: #1a1a1c;
+  --tinta-2: #5b5b63;
+  --tinta-3: #8b8b93;
+
+  --fundo: #f6f6f7;
+  /* Campo, botão, cartão. */
+  --superficie: #ffffff;
+  /* Campo em repouso dentro de um cartão branco; trilho de controle segmentado. */
+  --superficie-2: #fbfbfc;
+  --superficie-3: #efeff1;
+  /* Bordas de campo, cartão e divisórias; e as internas, mais leves. */
+  --hairline: #e5e5e8;
+  --divisoria: #efeff1;
+
+  /*
+   * Cartão já conferido pela secretária. Cinza mais fundo que a superfície:
+   * conferido é assunto encerrado e tem de sair da frente do que falta.
+   */
+  --conferido: #ececef;
+
+  /* Urgência, erro, exclusão; e o aviso menos grave (falha de leitura). */
+  --alerta: #8f1a1a;
+  --alerta-fundo: #fae7e6;
+  --aviso: #8a3e06;
+  --aviso-fundo: #fbede0;
+
+  /* As três planilhas, reconhecíveis de relance. Ver `corDoConvenio`.
+
+     O par cor/fundo existe porque o convênio virou etiqueta no cartão: a cor
+     cheia é a do texto e da borda, o fundo é a mesma matiz bem diluída. Valores
+     fixos, e não `color-mix`, pelo mesmo motivo de `--alerta-fundo`: um token
+     que se lê no arquivo não depende de suporte do navegador. */
+  --conv-unimed: #06773f;
+  --conv-unimed-fundo: #e8f3ed;
+  --conv-particular: #0b3d91;
+  --conv-particular-fundo: #e9eef6;
+  --conv-outros: #9a4a0c;
+  --conv-outros-fundo: #f8eee5;
 }
 
 html,
@@ -139,6 +204,199 @@ input[type="time"]::-webkit-date-and-time-value {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/*
+ * Estados da conferência.
+ *
+ * Estilo em linha não alcança `:hover`, `:active` nem `:focus-visible`, e sem
+ * eles a tela de quem trabalha de teclado não mostra onde o foco está. Por
+ * isso estas classes — e por isso os componentes não põem em linha nada que
+ * estas regras precisem trocar (fundo de repouso, borda de campo).
+ */
+.conf-item {
+  background: transparent;
+  transition: background-color 80ms ease-out;
+}
+.conf-item:hover {
+  background: var(--superficie-3);
+}
+
+.conf-botao {
+  background: var(--superficie);
+  border: 1px solid var(--hairline);
+  transition: background-color 80ms ease-out, border-color 80ms ease-out;
+}
+.conf-botao:hover {
+  background: var(--superficie-2);
+  border-color: #d3d3d9;
+}
+.conf-botao:active {
+  background: var(--superficie-3);
+}
+
+.conf-campo {
+  background: var(--superficie-2);
+  border: 1px solid var(--hairline);
+}
+.conf-campo:hover {
+  border-color: #d3d3d9;
+}
+.conf-campo:focus {
+  outline: none;
+  background: var(--superficie);
+  border: 1.5px solid var(--acento);
+  box-shadow: 0 0 0 3px rgba(184, 150, 62, 0.22);
+}
+
+.conf-item:focus-visible,
+.conf-botao:focus-visible,
+.conf-escolha:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(184, 150, 62, 0.22);
+  border-color: var(--acento);
+}
+
+.conf-escolha {
+  background: var(--superficie);
+  border: 1px solid var(--hairline);
+}
+.conf-escolha:hover {
+  background: var(--superficie-2);
+}
+.conf-escolha[aria-pressed="true"] {
+  background: var(--acento-fundo);
+  border-color: var(--acento-borda);
+  color: var(--acento-texto);
+  font-weight: 600;
+}
+
+/* Célula editável da tabela: sem moldura em repouso, campo ao focar. */
+.conf-celula {
+  background: transparent;
+  border: 1px solid transparent;
+}
+.conf-celula:hover {
+  border-color: var(--hairline);
+}
+.conf-celula:focus {
+  outline: none;
+  background: var(--superficie);
+  border: 1px solid var(--acento);
+  box-shadow: 0 0 0 3px rgba(184, 150, 62, 0.22);
+}
+
+/* Linha do Percorrer: o foco do teclado tem de aparecer, e o mouse também. */
+.conf-linha {
+  outline: none;
+}
+.conf-linha:hover {
+  background: var(--superficie-2);
+}
+.conf-linha:focus-visible {
+  background: var(--acento-fundo);
+}
+
+/*
+ * Estados do app do celular.
+ *
+ * O app é estilizado em linha, e linha não alcança `:focus`, `:active` nem
+ * `:hover`. Daí estas regras, presas a `.app` para não vazar para a
+ * conferência, que tem as suas. O `!important` da borda é o único jeito de
+ * vencer a borda em linha de `inputStyle` enquanto o campo tem foco.
+ */
+.app button {
+  transition: filter 80ms ease-out, transform 80ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+.app button:active:not(:disabled) {
+  filter: brightness(0.94);
+  transform: scale(0.985);
+}
+@media (hover: hover) {
+  .app button:hover:not(:disabled) {
+    filter: brightness(0.97);
+  }
+}
+.app button:focus-visible,
+.app a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(184, 150, 62, 0.35);
+}
+.app input:not([type="checkbox"]):focus,
+.app select:focus,
+.app textarea:focus {
+  outline: none;
+  border: 1.5px solid var(--acento) !important;
+  box-shadow: 0 0 0 3px rgba(184, 150, 62, 0.22);
+}
+.app input[type="checkbox"] {
+  accent-color: var(--acento);
+}
+.app input::placeholder,
+.app textarea::placeholder {
+  color: var(--tinta-3);
+}
+
+/*
+ * Formulário agrupado.
+ *
+ * Os campos vivem num cartão só, um por linha, com divisória fina recuada à
+ * esquerda — e não cada um com a própria borda. Dez caixas empilhadas viravam
+ * uma parede de retângulos; agrupado, o contraste vem do fundo e o olho segue
+ * a coluna de rótulos.
+ *
+ * O campo perde a moldura em repouso. A marca de foco passa para a linha: um
+ * filete dourado na lateral, que se vê com o polegar por cima do campo. Campo
+ * reprovado (`aria-invalid`) mantém o vermelho que veio em linha.
+ */
+/*
+ * Sem `overflow: hidden`, de propósito: a lista de sugestões do autocompletar
+ * sai do campo para baixo, e o grupo a cortava — no iPhone ela aparecia
+ * escondida atrás do grupo seguinte. As linhas não têm fundo próprio, então
+ * não há canto a aparar.
+ */
+.grupo {
+  background: var(--superficie);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+}
+.grupo > * {
+  margin-left: 16px;
+  padding: 10px 16px 10px 0;
+}
+.grupo > * + * {
+  border-top: 1px solid var(--divisoria);
+}
+.grupo > *:focus-within {
+  box-shadow: -13px 0 0 0 var(--superficie), -16px 0 0 0 var(--acento);
+}
+.grupo input:not([type="checkbox"]):not([aria-invalid="true"]):not(.com-borda),
+.grupo select:not([aria-invalid="true"]):not(.com-borda),
+.grupo textarea:not([aria-invalid="true"]) {
+  border-color: transparent !important;
+  background: transparent !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  box-shadow: none !important;
+}
+.grupo input[aria-invalid="true"],
+.grupo select[aria-invalid="true"] {
+  padding-left: 10px;
+}
+
+/*
+ * Dentro do grupo o rótulo já está em cima, e o campo não precisa da altura
+ * de caixa: só a da linha de texto, e a linha inteira é o alvo do dedo.
+ */
+.grupo input:not([type="checkbox"]):not([aria-invalid="true"]):not(.com-borda),
+.grupo select:not([aria-invalid="true"]):not(.com-borda) {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+.grupo input[type="date"],
+.grupo input[type="time"] {
+  height: 30px;
 }
 
 /*
@@ -262,4 +520,392 @@ nav .aba-da-barra:active {
     width: 100%;
     opacity: 0.6;
   }
+}
+
+/* ── O app do celular: papel, texto dourado e fonte ─────────────────────────
+ *
+ * Só no `.app`, e não na raiz: a tela da secretaria é outro público e segue a
+ * paleta neutra de CLAUDE.md. Aqui a equipe escolheu um fundo levemente quente,
+ * um dourado de texto mais escuro (#7A5F22 dá 6,3:1 sobre branco, contra 4,9:1
+ * do anterior) e a Inter. Redefinir as variáveis no próprio `.app` faz todo
+ * `CORES.fundo` e `--acento-texto` de dentro dele acompanharem sem tocar no JS.
+ */
+.app {
+  --fundo: #f7f6f3;
+  --acento-texto: #7a5f22;
+  font-family: "Inter", var(--fonte);
+}
+
+/* ── A tela inicial (aba Novo) ──────────────────────────────────────────────
+ *
+ * Em classes, e não em estilo em linha, porque cada peça aqui é tocável e
+ * precisa de :hover e :active — estilo em linha não alcança pseudoclasse.
+ */
+.inicio-rotulo {
+  font-size: 13px;
+  font-weight: 600;
+  color: #5f5b53;
+  letter-spacing: 0.2px;
+}
+
+/* border-box de propósito: o botão já nasce assim, mas a versão "confirmar"
+   é um <div>, e com width 100% + borda + recuo ela vazava pela lateral. */
+.inicio-local {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 64px;
+  border-radius: 16px;
+  border: 1.5px solid #e2dccd;
+  background: var(--superficie);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--tinta-1);
+}
+.inicio-local:hover {
+  border-color: var(--acento);
+}
+/* Sem local, o campo pede atenção sem parecer erro: tracejado e quente. */
+.inicio-local.vazio {
+  border-style: dashed;
+  border-color: #cdbf9c;
+  background: #fbf8f1;
+}
+
+.inicio-local-icone {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--cabecalho);
+  color: #c9aa63;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.inicio-local.confirmar {
+  flex-direction: column;
+  align-items: stretch;
+  cursor: default;
+  border-color: #d9a93a;
+  background: #fff7e3;
+}
+.inicio-local.confirmar:hover {
+  border-color: #d9a93a;
+}
+.inicio-local-trocar,
+.inicio-local-confirmar {
+  height: 44px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.inicio-local-trocar {
+  border: 1.5px solid #d8cba6;
+  background: var(--superficie);
+  color: var(--tinta-1);
+}
+.inicio-local-confirmar {
+  border: none;
+  background: var(--cabecalho);
+  color: #ffffff;
+}
+.inicio-local.vazio .inicio-local-icone {
+  background: #f0e8d6;
+  color: var(--acento-texto);
+}
+
+.inicio-acoes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: opacity 0.15s ease;
+}
+/* Sem local, tudo espera — esmaecido, e os botões de fato desabilitados. */
+.inicio-acoes.sem-local {
+  opacity: 0.45;
+}
+
+.inicio-foto {
+  width: 100%;
+  border: none;
+  border-radius: 20px;
+  background: var(--cabecalho);
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+  cursor: pointer;
+  color: #ffffff;
+}
+.inicio-foto:hover:not(:disabled) {
+  background: #2a2a2a;
+}
+.inicio-foto:disabled,
+.inicio-bloco:disabled {
+  cursor: default;
+}
+.inicio-foto-icone {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--acento);
+  color: var(--cabecalho);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inicio-blocos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.inicio-bloco {
+  border: 1px solid #e7e2d6;
+  background: var(--superficie);
+  border-radius: 16px;
+  padding: 16px 8px 14px;
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  color: var(--tinta-1);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: center;
+}
+.inicio-bloco:hover:not(:disabled) {
+  border-color: var(--acento-borda);
+  background: #fdfcf9;
+}
+.inicio-bloco-icone {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #f3eee2;
+  color: var(--acento-texto);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inicio-link {
+  border: none;
+  background: transparent;
+  padding: 4px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--acento-texto);
+  cursor: pointer;
+}
+.inicio-link:hover {
+  color: #5c4718;
+}
+
+.inicio-cartao {
+  background: var(--superficie);
+  border: 1px solid #e7e2d6;
+  border-radius: 16px;
+}
+
+.inicio-hoje-linha {
+  width: 100%;
+  min-height: 60px;
+  border: none;
+  border-bottom: 1px solid #f0ede6;
+  background: transparent;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--tinta-1);
+}
+.inicio-hoje-linha:last-child {
+  border-bottom: none;
+}
+.inicio-hoje-linha:hover {
+  background: #fbf9f4;
+}
+
+/* ── A folha de locais, que sobe de baixo ───────────────────────────────── */
+.folha-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(20, 20, 19, 0.55);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: folha-fundo-entra 0.18s ease-out;
+}
+.folha {
+  background: var(--superficie);
+  border-radius: 24px 24px 0 0;
+  height: min(640px, 86vh);
+  display: flex;
+  flex-direction: column;
+  padding: 0 20px;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  animation: folha-sobe 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 0.18s ease-out;
+}
+/* A faixa que arrasta: alça e cabeçalho. Sem touch-action, o Safari tomaria
+   o gesto para rolar a página e o pointermove pararia no meio. */
+.folha-topo {
+  display: flex;
+  flex-direction: column;
+  padding-top: 10px;
+  touch-action: none;
+  cursor: grab;
+}
+.folha-alca {
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: #d9d4c8;
+  align-self: center;
+}
+.folha-busca {
+  height: 48px;
+  border-radius: 14px;
+  background: #f3f1ec;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  color: #6b665c;
+}
+/* O foco aqui é só o fundo clareando: o campo já é o único da folha, e o
+   contorno escuro do resto do app pesava sobre a lista. */
+.folha-busca:focus-within {
+  background: #faf9f6;
+}
+/* 16px de propósito: abaixo disso o iPhone dá zoom na tela ao focar o campo. */
+.app .folha-busca input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  color: var(--tinta-1);
+  outline: none;
+  box-shadow: none;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.app .folha-busca input:focus {
+  border: none !important;
+  box-shadow: none;
+}
+.folha-secao {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b665c;
+  letter-spacing: 0.6px;
+  padding: 18px 0 6px;
+}
+.folha-item {
+  width: 100%;
+  min-height: 52px;
+  border: none;
+  border-bottom: 1px solid #f0ede6;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--tinta-1);
+}
+.folha-item:hover {
+  background: #fbf9f4;
+}
+.folha-item[aria-selected="true"] {
+  font-weight: 600;
+}
+
+@keyframes folha-sobe {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes folha-fundo-entra {
+  from { background: rgba(20, 20, 19, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .folha,
+  .folha-fundo {
+    animation: none;
+  }
+}
+
+/* O aviso do procedimento complementar: fixo, e não piscando. O que pisca o
+   tempo todo vira paisagem; o aceite embaixo é o que garante a leitura. */
+.aviso-complementar {
+  border-radius: 14px;
+  background: #fff4d6;
+  border: 1.5px solid #e0b44a;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
+  color: var(--tinta-1);
+}
+
+/* "Realizou Analgesia?" — a pergunta que o parto no principal abre.
+   Fundo de aviso, como a caixa da guia complementar: é da mesma família de
+   recado, o que se perde por esquecimento. Vira vermelha só quando o "Sim"
+   ficou sem a assistência marcada e alguém tentou salvar. */
+.pergunta-analgesia {
+  border-radius: 14px;
+  background: #fff4d6;
+  border: 1.5px solid #e0b44a;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
+  color: var(--tinta-1);
+}
+
+.pergunta-analgesia.falta {
+  background: var(--alerta-fundo);
+  border-color: var(--alerta);
+  color: var(--alerta);
+}
+
+/* 44px de alvo: a resposta é dada de luva, no centro cirúrgico. */
+.analgesia-botao {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1.5px solid var(--hairline);
+  background: var(--superficie);
+  color: var(--tinta-1);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.analgesia-botao.aceso {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: #fff;
 }

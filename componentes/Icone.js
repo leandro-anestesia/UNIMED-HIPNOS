@@ -11,6 +11,20 @@
  */
 
 const DESENHOS = {
+  /* O marcador de lugar: o campo do local na tela inicial. */
+  local: (
+    <>
+      <path d="M10 17.5s-5.5-4.9-5.5-9.2a5.5 5.5 0 0 1 11 0c0 4.3-5.5 9.2-5.5 9.2z" />
+      <circle cx="10" cy="8.2" r="2" />
+    </>
+  ),
+  /* "Usado há pouco": a seção Recentes da lista de locais. */
+  relogio: (
+    <>
+      <circle cx="10" cy="10" r="7" />
+      <path d="M10 6.5V10l2.5 1.7" />
+    </>
+  ),
   busca: (
     <>
       <circle cx="9" cy="9" r="6" />

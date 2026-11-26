@@ -358,7 +358,7 @@ export default function Secretaria() {
         style={{
           background: CORES.escura,
           color: CORES.sobreEscura,
-          padding: `${ESPACO[3]}px ${ESPACO[4]}px`,
+          padding: `${ESPACO[3]} ${ESPACO[4]}`,
           borderBottom: `3px solid ${CORES.principal}`,
           display: "flex",
           alignItems: "center",
@@ -451,7 +451,7 @@ export default function Secretaria() {
                       display: "flex",
                       alignItems: "center",
                       gap: ESPACO[2],
-                      padding: `${ESPACO[1]}px 0`,
+                      padding: `${ESPACO[1]} 0`,
                       fontSize: TEXTO.apoio,
                       cursor: "pointer",
                     }}
@@ -502,7 +502,7 @@ export default function Secretaria() {
                       alignItems: "flex-start",
                       gap: 2,
                       minWidth: 150,
-                      padding: `${ESPACO[2]}px ${ESPACO[3]}px`,
+                      padding: `${ESPACO[2]} ${ESPACO[3]}`,
                       borderRadius: 8,
                       cursor: "pointer",
                       textAlign: "left",
@@ -677,7 +677,7 @@ export default function Secretaria() {
             right: ESPACO[4],
             bottom: ESPACO[4],
             zIndex: 60,
-            padding: `${ESPACO[3]}px ${ESPACO[4]}px`,
+            padding: `${ESPACO[3]} ${ESPACO[4]}`,
             borderRadius: 10,
             background: CORES.escura,
             color: CORES.sobreEscura,
@@ -705,7 +705,7 @@ const LARGURA_DO_CAMPO = {
 };
 
 const th = {
-  padding: `${ESPACO[2]}px ${ESPACO[2]}px`,
+  padding: `${ESPACO[2]} ${ESPACO[2]}`,
   textAlign: "left",
   fontSize: TEXTO.miudo,
   letterSpacing: "0.04em",
@@ -716,7 +716,7 @@ const th = {
 };
 
 const td = {
-  padding: `${ESPACO[1]}px ${ESPACO[1]}px`,
+  padding: `${ESPACO[1]} ${ESPACO[1]}`,
   borderTop: `1px solid ${CORES.bordaSuave}`,
   verticalAlign: "middle",
 };

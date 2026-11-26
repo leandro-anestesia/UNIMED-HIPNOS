@@ -20,9 +20,14 @@ import * as XLSX from "xlsx";
 import { normalizarTexto } from "../lib/texto";
 import { analisarGuia } from "../lib/guia";
 import { estadoDe, foiExecutada, opcoesDe, padraoDe, rotuloDe } from "../lib/estados";
-import { NOMES_DE_LOCAL, leituraDoLocal } from "../lib/locais";
+import { NOMES_DE_LOCAL, leituraDoLocal, nomeDoLocal } from "../lib/locais";
 import { ehDaVision, regrasDaVision } from "../lib/vision";
-import { osSoComplementares, recadoDoSoComplementar } from "../lib/procedimentos";
+import {
+  osSoComplementares,
+  recadoDoSoComplementar,
+  temAssistenciaAoParto,
+  temParto,
+} from "../lib/procedimentos";
 import { chaveDeOrdem, ordenarRegistros } from "../lib/ordem";
 import { modeloDoRegistro } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, VERSAO_VISIVEL, corDoConvenio, fundoDoConvenio } from "../lib/marca";
@@ -290,6 +295,135 @@ async function mensagemDeErro(r) {
   return `erro ${r.status}`;
 }
 
+/** Onde o aparelho guarda o último local e os usados há pouco. */
+const CHAVE_DO_LOCAL = "hipnos_local";
+const CHAVE_DO_LOCAL_EM = "hipnos_local_confirmado_em";
+/** A hora em que o local lembrado passa a pedir confirmação. */
+const HORA_DE_CONFIRMAR_LOCAL = 7;
+
+/**
+ * As 07:00 mais recentes que já passaram: hoje, se já são 07:00; senão,
+ * ontem. Hora do aparelho, que é a de quem está no centro cirúrgico.
+ */
+function ultimoCorteDoLocal(agora) {
+  const corte = new Date(agora);
+  corte.setHours(HORA_DE_CONFIRMAR_LOCAL, 0, 0, 0);
+  if (corte > agora) corte.setDate(corte.getDate() - 1);
+  return corte.getTime();
+}
+
+const CHAVE_DOS_RECENTES = "hipnos_locais_recentes";
+/** Três: o que cabe acima da lista completa sem empurrá-la para fora da folha. */
+const LOCAIS_RECENTES = 3;
+
+/**
+ * Este registro é desta pessoa?
+ *
+ * Pelo `criadoPor`, que o servidor carimba em todo lançamento novo. Os
+ * registros de antes do carimbo — e os trazidos do app oficial — não têm
+ * autor; para eles vale o anestesiologista do registro, comparado com o nome
+ * de quem está logado. Sem acesso conhecido, nada é de ninguém: a tela inicial
+ * não pode mostrar os pacientes de outro anestesiologista enquanto carrega.
+ */
+function lancadoPor(entry, eu) {
+  if (!eu || !entry) return false;
+  if (entry.criadoPor) return entry.criadoPor === eu.usuario;
+  const nome = normalizarTexto(eu.nome || "");
+  return nome !== "" && normalizarTexto(entry.anestesista || "") === nome;
+}
+
+/**
+ * Quem é chamado pelo nome, sem "Dr." nem "Dra.".
+ *
+ * A Adriana é a secretária; todo o resto da lista de acesso é anestesiologista.
+ * Por nome, e não pelo papel: há anestesiologista com papel de mestre, e o
+ * papel diz o que a pessoa pode fazer no app, não como ela é chamada.
+ */
+const SEM_TRATAMENTO = ["adriana"];
+
+/**
+ * "Dr." ou "Dra.", pela última letra do primeiro nome.
+ *
+ * É uma aproximação, e acerta a equipe inteira de hoje (Amanda, Juliana,
+ * Rayana… Dra.; Leandro, Matheus, Otávio… Dr.). Um nome que fuja da regra
+ * entra em `TRATAMENTO_POR_NOME`, em vez de virar exceção espalhada no código.
+ */
+const TRATAMENTO_POR_NOME = {};
+
+function tratamentoDe(primeiroNome) {
+  const nome = normalizarTexto(primeiroNome);
+  if (!nome || SEM_TRATAMENTO.includes(nome)) return "";
+  if (TRATAMENTO_POR_NOME[nome]) return TRATAMENTO_POR_NOME[nome];
+  return nome.endsWith("a") ? "Dra." : "Dr.";
+}
+
+/**
+ * "Bom dia, Dr. Leandro", pela hora do aparelho.
+ *
+ * Só o primeiro nome. Antes de o acesso responder, fica a saudação sozinha,
+ * em vez de um "carregando…".
+ */
+function saudacao(eu) {
+  const hora = new Date().getHours();
+  const cumprimento = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
+  const primeiro = ((eu && eu.nome) || "").trim().split(/\s+/)[0] || "";
+  if (!primeiro) return cumprimento;
+  const nome = `${primeiro.charAt(0).toUpperCase()}${primeiro.slice(1).toLowerCase()}`;
+  const tratamento = tratamentoDe(primeiro);
+  return `${cumprimento}, ${tratamento ? `${tratamento} ` : ""}${nome}`;
+}
+
+const DIAS_DA_SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const MESES_CURTOS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+/**
+ * "seg, 23 nov".
+ *
+ * Montada à mão, e não com `toLocaleDateString`: o formato do `pt-BR` muda de
+ * navegador para navegador ("seg., 23 de nov.") e, num cabeçalho de uma linha,
+ * cada ponto a mais empurra a saudação.
+ */
+function dataPorExtenso() {
+  const d = new Date();
+  return `${DIAS_DA_SEMANA[d.getDay()]}, ${d.getDate()} ${MESES_CURTOS[d.getMonth()]}`;
+}
+
+/**
+ * O teto do PDF do mapa.
+ *
+ * Em base64 um arquivo cresce um terço, e o corpo da requisição ainda leva o
+ * JSON em volta: 3 MB de PDF viram uns 4 MB de corpo. O teto é conservador de
+ * propósito — a agenda exportada do sistema da clínica é um PDF de texto, de
+ * algumas centenas de KB, e quem passa disso costuma ser um PDF escaneado, que
+ * é foto com outro nome: para esse, fotografar a folha já funciona e dá menos
+ * volta.
+ */
+const MAIOR_PDF = 3 * 1024 * 1024;
+
+/** O que o seletor do mapa abre: foto OU a agenda em PDF. */
+const TIPOS_DO_MAPA = "image/*,application/pdf";
+
+/**
+ * O arquivo em base64, inteiro e sem passar por canvas.
+ *
+ * `fileToResizedBase64` desenha num `<img>` para encolher, e PDF não entra em
+ * `<img>` — a leitura falharia com "não foi possível decodificar esta imagem".
+ * Aqui o arquivo vai como está; quem cuida do tamanho é `MAIOR_PDF`.
+ */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Não foi possível ler o arquivo selecionado."));
+    reader.onload = () => {
+      const texto = String(reader.result || "");
+      const virgula = texto.indexOf(",");
+      if (virgula < 0) return reject(new Error("Não foi possível ler o arquivo selecionado."));
+      resolve(texto.slice(virgula + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function fileToResizedBase64(file, maxDim = 1568, quality = 0.85) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -328,7 +462,18 @@ export default function Home() {
   // Qual leitura está em curso. O aviso de espera dizia "Lendo a guia…" nos
   // dois casos, porque `status` só sabe que está lendo, não o quê: quem
   // fotografava o mapa da clínica lia que o app estava lendo uma guia.
-  const [lendo, setLendo] = useState("guia"); // guia | mapa
+  const [lendo, setLendo] = useState("guia"); // guia | mapa | mapa-pdf
+  // "Confirmo que preenchi a guia complementar": o complementar só é pago com
+  // a guia própria, e o aviso piscando era ignorado de tanto aparecer. Um
+  // aceite explícito trava o Salvar até alguém de fato olhar.
+  const [aceiteComplementar, setAceiteComplementar] = useState(false);
+  // "Realizou analgesia?", perguntada quando o principal é um parto:
+  // "sim" | "nao" | null (ainda sem resposta).
+  //
+  // Não é campo do registro, e por isso não é gravada. O que se grava é a
+  // consequência — a assistência entre os complementares, com as horas —, e
+  // essa sim vai para a planilha e para a conta.
+  const [analgesiaDeParto, setAnalgesiaDeParto] = useState(null);
   const [activeTab, setActiveTab] = useState("novo"); // novo | procedimentos | cadastros
   const [viewingEntry, setViewingEntry] = useState(null);
   const [cadastros, setCadastros] = useState(CADASTROS_VAZIOS);
@@ -407,6 +552,17 @@ export default function Home() {
    * um caso do hospital achando que o local ainda está vazio.
    */
   const [localAtivo, setLocalAtivo] = useState("");
+  // O local veio da memória do aparelho, e não de um toque agora? A tela diz
+  // isso embaixo do nome — é o aviso de que a escolha é de outro dia.
+  const [localLembrado, setLocalLembrado] = useState(false);
+  // Quando o local foi escolhido ou confirmado pela última vez neste aparelho
+  // (ms). Sem data — escolha de antes desta regra — conta como velha.
+  const [localConfirmadoEm, setLocalConfirmadoEm] = useState(null);
+  // Muda quando o relógio cruza as 07:00 ou o app volta do segundo plano: o
+  // PWA fica aberto de um dia para o outro, e o aviso tem de aparecer sem
+  // ninguém recarregar a página.
+  const [relogio, setRelogio] = useState(0);
+  const [locaisRecentes, setLocaisRecentes] = useState([]);
   // Qual cartão da lista está aberto. Um de cada vez: a lista existe para
   // percorrer, e vários abertos a transformariam de novo num paredão.
   const [expandido, setExpandido] = useState(null);
@@ -644,8 +800,29 @@ export default function Home() {
    * coluna nas três planilhas e é por ele que a conferência diz onde a cirurgia
    * foi; local errado é pior do que local em branco, porque o branco se vê.
    */
+  function marcarLocalConfirmado() {
+    const agora = Date.now();
+    setLocalConfirmadoEm(agora);
+    try {
+      window.localStorage.setItem(CHAVE_DO_LOCAL_EM, String(agora));
+    } catch (e) {
+      // Sem armazenamento, a confirmação vale até fechar o app.
+    }
+  }
+
   function escolherLocal(local) {
     setLocalAtivo(local);
+    setLocalLembrado(false);
+    if (!local) return;
+    marcarLocalConfirmado();
+    const recentes = [local, ...locaisRecentes.filter((l) => l !== local)].slice(0, LOCAIS_RECENTES);
+    setLocaisRecentes(recentes);
+    try {
+      window.localStorage.setItem(CHAVE_DO_LOCAL, local);
+      window.localStorage.setItem(CHAVE_DOS_RECENTES, JSON.stringify(recentes));
+    } catch (e) {
+      // Sem armazenamento, a escolha vale até fechar o app.
+    }
   }
 
   // Memoizado porque entra na dependência do efeito abaixo: recriar o array a
@@ -768,18 +945,40 @@ export default function Home() {
   async function handleMapa(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
+
+    // A agenda da clínica sai do sistema em PDF. Antes, só foto: quem tinha o
+    // PDF na mão precisava imprimir para fotografar, ou abrir e dar print na
+    // tela — duas voltas para chegar ao mesmo lugar, e com pior leitura.
+    const ehPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+
+    if (ehPdf && file.size > MAIOR_PDF) {
+      // Recusar aqui, com o motivo, em vez de deixar o servidor devolver um
+      // erro de tamanho que não diz o que fazer.
+      setErrorMsg(
+        `Este PDF tem ${(file.size / 1024 / 1024).toFixed(1)} MB e o limite é ` +
+          `${MAIOR_PDF / 1024 / 1024} MB. Se ele for digitalizado, fotografar a folha funciona e costuma ler igual.`
+      );
+      if (mapaInputRef.current) mapaInputRef.current.value = "";
+      return;
+    }
+
     setErrorMsg("");
-    setLendo("mapa");
+    setLendo(ehPdf ? "mapa-pdf" : "mapa");
     setStatus("extracting");
     try {
-      const base64 = await fileToResizedBase64(file);
+      // O PDF vai inteiro; a foto continua encolhendo antes de subir.
+      const base64 = ehPdf ? await fileToBase64(file) : await fileToResizedBase64(file);
 
       const r = await fetch("/api/extract-mapa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // O local vai junto porque a folha da Vision é outra, e a leitura
         // precisa saber qual instrução usar.
-        body: JSON.stringify({ imageBase64: base64, mediaType: "image/jpeg", local: localAtivo }),
+        body: JSON.stringify({
+          imageBase64: base64,
+          mediaType: ehPdf ? "application/pdf" : "image/jpeg",
+          local: localAtivo,
+        }),
       });
       const parsed = await r.json();
       if (!r.ok) throw new Error(parsed.error || "Falha na leitura do mapa");
@@ -1097,6 +1296,96 @@ export default function Home() {
   // preenchido.
   const faltaProcedimento = !!errorMsg && marcados(draft.procedimentos).length === 0;
 
+  /**
+   * O local lembrado, lido do aparelho na abertura.
+   *
+   * Só no aparelho (`localStorage`), e não no servidor: o lugar de hoje é de
+   * quem está com o celular na mão, não da equipe. E nada de paciente entra
+   * aqui — só nomes da lista fechada de `lib/locais.js`.
+   */
+  useEffect(() => {
+    try {
+      const ultimo = nomeDoLocal(window.localStorage.getItem(CHAVE_DO_LOCAL) || "");
+      if (ultimo) {
+        setLocalAtivo(ultimo);
+        setLocalLembrado(true);
+        const em = Number(window.localStorage.getItem(CHAVE_DO_LOCAL_EM));
+        setLocalConfirmadoEm(Number.isFinite(em) && em > 0 ? em : null);
+      }
+      const recentes = JSON.parse(window.localStorage.getItem(CHAVE_DOS_RECENTES) || "[]");
+      if (Array.isArray(recentes)) setLocaisRecentes(recentes.map(nomeDoLocal).filter(Boolean));
+    } catch (e) {
+      // Navegação privada ou armazenamento bloqueado: o app funciona igual,
+      // só sem lembrar.
+    }
+  }, []);
+
+  // O relógio que faz o aviso das 07:00 aparecer sem recarregar a página.
+  useEffect(() => {
+    const tocar = () => setRelogio((n) => n + 1);
+    const intervalo = window.setInterval(tocar, 60 * 1000);
+    document.addEventListener("visibilitychange", tocar);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", tocar);
+    };
+  }, []);
+
+  /**
+   * O local lembrado vale até as 07:00 do dia seguinte. Escolhido ontem à
+   * tarde, ele pede confirmação a partir das 07:00 de hoje: é a hora em que o
+   * plantão troca e o lugar de ontem deixa de ser um palpite seguro. Até
+   * confirmar ou trocar, os botões de lançamento esperam — barrar antes da
+   * foto é mais barato do que descobrir o local errado na conferência.
+   */
+  const localPrecisaConfirmar = useMemo(() => {
+    if (!localAtivo) return false;
+    return !localConfirmadoEm || localConfirmadoEm < ultimoCorteDoLocal(new Date());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localAtivo, localConfirmadoEm, relogio]);
+  const podeLancar = !!localAtivo && !localPrecisaConfirmar;
+
+  const faltaAceiteComplementar =
+    !ehParticular(draft) && (draft.procedimentoComplementar || []).length > 0 && !aceiteComplementar;
+
+  /**
+   * A pergunta da analgesia, e o que ela passa a exigir.
+   *
+   * Só aparece fora do particular: na planilha particular não há coluna de
+   * complementar — o bloco inteiro está escondido —, então perguntar ali seria
+   * pedir uma resposta cuja única consequência não existe, e um "sim" travaria
+   * o Salvar sem campo nenhum para destravá-lo.
+   *
+   * A resposta mostrada tolera o registro antigo: se a assistência JÁ está
+   * marcada, o registro responde a pergunta por si, e a caixa abre com "Sim"
+   * aceso em vez de em branco. A exigência, no entanto, olha só o que foi
+   * clicado agora — quem clica "Sim" e desmarca a assistência continua barrado.
+   */
+  const perguntarAnalgesia = !ehParticular(draft) && temParto(marcados(draft.procedimentos));
+  const respostaAnalgesia =
+    analgesiaDeParto || (temAssistenciaAoParto(draft.procedimentoComplementar) ? "sim" : null);
+  const faltaAssistenciaAoParto =
+    perguntarAnalgesia &&
+    analgesiaDeParto === "sim" &&
+    !temAssistenciaAoParto(draft.procedimentoComplementar);
+  // A pergunta é obrigatória: registro de parto não sai sem ela respondida.
+  // Vale a resposta MOSTRADA, e não só a clicada.
+  const faltaRespostaAnalgesia = perguntarAnalgesia && !respostaAnalgesia;
+
+  // Mexeu nos complementares — marcou outro, desmarcou um —, o aceite volta
+  // a valer nada: a guia que foi preenchida era para a lista de antes.
+  const codigosComplementares = (draft.procedimentoComplementar || []).map(codigoDo).join("|");
+  useEffect(() => {
+    setAceiteComplementar(false);
+  }, [codigosComplementares, status]);
+
+  // Saiu o parto do principal — desmarcado, apagado, trocado —, a resposta
+  // deixa de valer. Um "sim" esquecido travaria o Salvar de um registro que já
+  // não é de parto, e nada na tela explicaria por quê.
+  useEffect(() => {
+    if (!perguntarAnalgesia) setAnalgesiaDeParto(null);
+  }, [perguntarAnalgesia, status]);
+
   async function confirmEntry() {
     // A trava real é o ref: o estado do React só vale no próximo render, e um
     // toque duplo rápido dispararia dois envios antes disso. O `salvando` serve
@@ -1129,6 +1418,25 @@ export default function Home() {
     const foraDeLugar = osSoComplementares(procedimentos);
     if (foraDeLugar.length > 0) {
       setErrorMsg(recadoDoSoComplementar(foraDeLugar));
+      return;
+    }
+
+    // A pergunta antes da consequência: sem resposta não há o que exigir, e
+    // deixar passar em branco devolveria o esquecimento que a caixa veio
+    // impedir.
+    if (faltaRespostaAnalgesia) {
+      setErrorMsg("Responda se houve analgesia para salvar o registro.");
+      return;
+    }
+
+    // Respondeu "Sim" e a assistência não está marcada: é exatamente o
+    // lançamento que a pergunta existe para evitar. Barrar aqui, e não só
+    // pintar a caixa, é o que faz a hora ser cobrada.
+    if (faltaAssistenciaAoParto) {
+      setErrorMsg(
+        "Houve analgesia: marque \"Assistência ao trabalho de parto\" em Procedimento " +
+          "Complementar, com as horas."
+      );
       return;
     }
 
@@ -1670,129 +1978,131 @@ export default function Home() {
         )}
 
         {status === "idle" && activeTab === "novo" && (
-          // Empilhados e do mesmo tamanho: numa tela de celular, três alvos
-          // largos e bem separados erram menos que dois espremidos lado a lado.
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
             {/* O local vem antes dos botões porque é a primeira decisão: o que
-                se fotografa num lugar não vale no outro.
+                se fotografa num lugar não vale no outro. Um campo que mostra o
+                escolhido, e não um <select>: os nomes são longos, a lista
+                cresceu, e a folha que sobe tem busca e os usados há pouco. */}
+            <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <span className="inicio-rotulo" id="rotulo-local">Local</span>
+              <SeletorDeLocal
+                local={localAtivo}
+                lembrado={localLembrado}
+                precisaConfirmar={localPrecisaConfirmar}
+                aoConfirmar={marcarLocalConfirmado}
+                recentes={locaisRecentes}
+                aoEscolher={escolherLocal}
+              />
+            </section>
 
-                Num seletor, e não em fichas: os nomes são longos e viravam
-                três linhas de retângulos arredondados, indistinguíveis dos
-                botões logo abaixo. Aqui ocupa uma linha e mostra o escolhido
-                sem abrir nada.
+            {/* O recado de recusa, aqui na tela inicial.
 
-                Começa vazio e não é lembrado: a escolha é consciente, toda
-                vez. Enquanto nada está escolhido o seletor fica neutro; com
-                local, acende — a mesma distinção que o filtro da lista usa. */}
-            <Field label="Local">
-              <select
-                value={localAtivo}
-                onChange={(ev) => escolherLocal(ev.target.value)}
-                style={{
-                  ...inputStyle,
-                  fontWeight: localAtivo ? 600 : 400,
-                  color: localAtivo ? CORES.escura : CORES.suave,
-                  background: localAtivo ? CORES.clara : "white",
-                  borderColor: localAtivo ? CORES.principal : CORES.borda,
-                }}
-              >
-                <option value="">— Escolha o local —</option>
-                {NOMES_DE_LOCAL.map((local) => (
-                  <option key={local} value={local}>
-                    {local}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            {!localAtivo && (
-              <div
-                style={{
-                  marginTop: -10,
-                  fontSize: TEXTO.apoio,
-                  color: CORES.suave,
-                }}
-              >
-                Escolha o local para começar.
+                `errorMsg` só tinha lugar dentro do cartão do mapa e do
+                formulário — telas que só existem DEPOIS de a leitura dar
+                certo. Um arquivo recusado antes disso (um PDF grande demais)
+                punha a mensagem num estado que não aparece, e o toque no botão
+                virava silêncio: pior do que um erro do servidor, porque não
+                diz nem que houve recusa. */}
+            {status === "idle" && errorMsg && (
+              <div style={{ padding: "12px 14px", borderRadius: 12, fontSize: TEXTO.apoio, color: CORES.avisoTinta, background: CORES.avisoFundo }}>
+                {errorMsg}
               </div>
             )}
 
-            {/* Um primário só, e o resto discreto: com quatro botões do mesmo
-                peso, a tela vira uma lista de retângulos e nenhum é o caminho
-                óbvio.
+            {/* O recado de recusa, aqui na tela inicial.
 
-                Qual é o óbvio depende do local: onde a folha do dia traz todos
-                os pacientes, é o mapa; onde se fotografa um por um, é a guia.
-                Quem sabe a diferença é `lib/locais.js`, e o outro botão fica
-                logo abaixo nos dois casos — é peso, não permissão.
-
-                Sem local escolhido, os quatro esperam. Barrar aqui é melhor do
-                que deixar fotografar a guia e recusar na hora de salvar: a
-                leitura custa uma chamada ao modelo e a paciência de quem está
-                no centro cirúrgico. */}
-            {leituraDoLocal(localAtivo) === "mapa" ? (
-              <button
-                onClick={() => mapaInputRef.current && mapaInputRef.current.click()}
-                disabled={!localAtivo}
-                style={semLocal(btnEmpilhado(btnPrimary), localAtivo)}
-              >
-                <Icone nome="mapa" tamanho={20} /> Ler mapa cirúrgico
-              </button>
-            ) : (
-              <button
-                onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
-                disabled={!localAtivo}
-                style={semLocal(btnEmpilhado(btnPrimary), localAtivo)}
-              >
-                <Icone nome="camera" tamanho={20} /> Fotografar guia ou etiqueta
-              </button>
+                `errorMsg` só tinha lugar dentro do cartão do mapa e do
+                formulário — telas que só existem DEPOIS de a leitura dar
+                certo. Um arquivo recusado antes disso (um PDF grande demais)
+                punha a mensagem num estado que não aparece, e o toque no botão
+                virava silêncio. */}
+            {status === "idle" && errorMsg && (
+              <div style={{ padding: "12px 14px", borderRadius: 12, fontSize: TEXTO.apoio, color: CORES.avisoTinta, background: CORES.avisoFundo }}>
+                {errorMsg}
+              </div>
             )}
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {leituraDoLocal(localAtivo) === "mapa" ? (
+            {/* Um primário só, grande e escuro, e três discretos lado a lado:
+                fotografar a guia é o caminho de quase todo lançamento.
+
+                Sem local escolhido, os quatro esperam — desabilitados, e não
+                só apagados. Barrar aqui é melhor do que deixar fotografar e
+                recusar na hora de salvar: a leitura custa uma chamada ao modelo
+                e a paciência de quem está no centro cirúrgico. */}
+            <section className={`inicio-acoes${podeLancar ? "" : " sem-local"}`} aria-disabled={!podeLancar}>
+              <button
+                type="button"
+                className="inicio-foto"
+                onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
+                disabled={!podeLancar}
+              >
+                <span className="inicio-foto-icone">
+                  <Icone nome="camera" tamanho={28} />
+                </span>
+                <span style={{ fontSize: 17, fontWeight: 600, flex: 1, minWidth: 0 }}>Fotografar guia ou etiqueta</span>
+              </button>
+
+              <div className="inicio-blocos">
                 <button
-                  onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
-                  disabled={!localAtivo}
-                  style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
+                  type="button"
+                  className="inicio-bloco"
+                  onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
+                  disabled={!podeLancar}
                 >
-                  <Icone nome="camera" /> Fotografar etiqueta ou guia
+                  <span className="inicio-bloco-icone"><Icone nome="galeria" /></span>
+                  Da galeria
                 </button>
-              ) : (
                 <button
+                  type="button"
+                  className="inicio-bloco"
                   onClick={() => mapaInputRef.current && mapaInputRef.current.click()}
-                  disabled={!localAtivo}
-                  style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
+                  disabled={!podeLancar}
                 >
-                  <Icone nome="mapa" /> Ler mapa cirúrgico
+                  <span className="inicio-bloco-icone"><Icone nome="mapa" /></span>
+                  Mapa cirúrgico
                 </button>
-              )}
-              <button
-                onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
-                disabled={!localAtivo}
-                style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
-              >
-                <Icone nome="galeria" /> Da galeria
-              </button>
-              <button
-                onClick={startManual}
-                disabled={!localAtivo}
-                style={semLocal(btnEmpilhado(btnDiscreto), localAtivo)}
-              >
-                <Icone nome="lapis" /> Preencher manualmente
-              </button>
-            </div>
+                <button type="button" className="inicio-bloco" onClick={startManual} disabled={!podeLancar}>
+                  <span className="inicio-bloco-icone"><Icone nome="lapis" /></span>
+                  Manual
+                </button>
+              </div>
+            </section>
+
+            <HojeNaInicio
+              registros={entries.filter((e) => (e.dataCirurgia || "") === hoje && lancadoPor(e, acesso))}
+              carregado={loaded}
+              aoAbrir={(id) => {
+                // Os filtros da lista são limpos antes: o lançamento de hoje
+                // tem de aparecer lá, e um filtro de outro convênio, esquecido
+                // de ontem, o esconderia.
+                setLocalFiltro(TODOS_OS_LOCAIS);
+                setConvenioFiltro(TODOS_OS_CONVENIOS);
+                setSearchQuery("");
+                setMesSelecionado(SO_HOJE);
+                setExpandido(id || null);
+                setActiveTab("procedimentos");
+              }}
+            />
           </div>
         )}
 
         {status === "extracting" && (
           <div style={{ padding: 24, borderRadius: 8, border: `1px solid ${CORES.principal}`, background: CORES.clara, textAlign: "center", fontSize: TEXTO.apoio }}>
-            {lendo === "mapa" ? "Lendo o mapa cirúrgico…" : "Lendo a guia…"}
+            {lendo === "guia" ? "Lendo a guia…" : "Lendo o mapa cirúrgico…"}
+            {/* Um PDF de várias páginas leva bem mais tempo que uma foto. Sem
+                dizer isso, a espera parece travamento e o dedo volta ao botão
+                — o que recomeça a leitura e paga duas vezes. */}
+            {lendo === "mapa-pdf" && (
+              <div style={{ marginTop: 6, fontSize: TEXTO.apoio, color: CORES.suave }}>
+                Em PDF demora mais que em foto. Pode deixar aberto.
+              </div>
+            )}
           </div>
         )}
 
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: "none" }} />
         <input ref={galleryInputRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
-        <input ref={mapaInputRef} type="file" accept="image/*" onChange={handleMapa} style={{ display: "none" }} />
+        <input ref={mapaInputRef} type="file" accept={TIPOS_DO_MAPA} onChange={handleMapa} style={{ display: "none" }} />
 
         {status === "mapa" && mapa && (
           <div style={{ border: `1px solid ${CORES.borda}`, borderRadius: 8, background: "white", overflow: "hidden" }}>
@@ -2228,6 +2538,44 @@ export default function Home() {
                 </button>
               </div>
 
+              {/* O parto é o caso em que a analgesia fica sem cobrar: lança-se
+                  a cesariana, que é o ato, e a assistência ao trabalho de
+                  parto — paga por hora, à parte — vai junto com a lembrança.
+
+                  A caixa fica AQUI, entre o principal que a abriu e o
+                  complementar que ela exige, porque é a ordem em que a coisa
+                  acontece. No fim do formulário seria uma pergunta sem
+                  contexto; antes do principal, uma pergunta sem motivo. */}
+              {perguntarAnalgesia && (
+                <div className={`pergunta-analgesia${(faltaAssistenciaAoParto || faltaRespostaAnalgesia) && errorMsg ? " falta" : ""}`} role="group" aria-labelledby="pergunta-analgesia-titulo">
+                  <span id="pergunta-analgesia-titulo" style={{ fontSize: 15, fontWeight: 600 }}>
+                    Realizou Analgesia? *
+                  </span>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                    {[["sim", "Sim"], ["nao", "Não"]].map(([valor, rotulo]) => (
+                      <button
+                        key={valor}
+                        type="button"
+                        className={`analgesia-botao${respostaAnalgesia === valor ? " aceso" : ""}`}
+                        aria-pressed={respostaAnalgesia === valor}
+                        onClick={() => setAnalgesiaDeParto(valor)}
+                      >
+                        {rotulo}
+                      </button>
+                    ))}
+                  </div>
+                  {/* O recado do "Sim" aparece na hora, e não só ao salvar: a
+                      exigência nasce do toque, e descobri-la no fim do
+                      formulário é descobrir tarde. */}
+                  {faltaAssistenciaAoParto && (
+                    <span style={{ fontSize: TEXTO.apoio, lineHeight: 1.4 }}>
+                      Marque <strong>Assistência ao trabalho de parto</strong> em Procedimento
+                      Complementar, com as horas.
+                    </span>
+                  )}
+                </div>
+              )}
+
               <div style={{ height: 1, background: CORES.bordaSuave, margin: "4px 0" }} />
 
               {CAMPOS_MANUAIS.filter((f) => cabeNesteRegistro(f, draft)).map((f) => {
@@ -2290,35 +2638,29 @@ export default function Home() {
                   })}
                 </div>
                 {(draft.procedimentoComplementar || []).length > 0 && (
-                  <div
-                    className="aviso-guia-complementar"
-                    style={{
-                      fontSize: TEXTO.apoio,
-                      fontWeight: 700,
-                      color: CORES.alerta,
-                      textAlign: "center",
-                    }}
-                  >
-                    NÃO ESQUEÇA DE PREENCHER A GUIA COMPLEMENTAR
-                    <style jsx>{`
-                      .aviso-guia-complementar {
-                        animation: piscar-aviso 1.8s ease-in-out infinite;
-                      }
-                      @keyframes piscar-aviso {
-                        0%,
-                        100% {
-                          opacity: 1;
-                        }
-                        50% {
-                          opacity: 0.25;
-                        }
-                      }
-                      @media (prefers-reduced-motion: reduce) {
-                        .aviso-guia-complementar {
-                          animation: none;
-                        }
-                      }
-                    `}</style>
+                  /* O aviso piscando era ignorado de tanto aparecer: pisca
+                     igual em todo registro com complementar, e o olho aprende
+                     a não ver. O aceite explícito trava o Salvar até alguém de
+                     fato olhar — e volta a zero sempre que a lista de
+                     complementares muda, porque a guia preenchida era para a
+                     lista de antes. */
+                  <div className="aviso-complementar" role="alert">
+                    <span style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <Icone nome="alerta" tamanho={20} style={{ color: "#7a5200", flexShrink: 0 }} />
+                      <span style={{ fontSize: 14, color: "#4a3500", lineHeight: 1.4 }}>
+                        Este registro tem procedimento complementar.
+                      </span>
+                    </span>
+                    <label style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        required
+                        checked={aceiteComplementar}
+                        onChange={(e) => setAceiteComplementar(e.target.checked)}
+                        style={{ width: 22, height: 22, flexShrink: 0, accentColor: "#1a1a1a" }}
+                      />
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>Confirmo que preenchi a Guia Complementar</span>
+                    </label>
                   </div>
                 )}
               </div>
@@ -2383,8 +2725,13 @@ export default function Home() {
               </button>
               <button
                 onClick={confirmEntry}
-                disabled={salvando}
-                style={{ ...btnPrimary, flex: 2, opacity: salvando ? 0.6 : 1, cursor: salvando ? "default" : "pointer" }}
+                disabled={salvando || faltaAceiteComplementar}
+                style={{
+                  ...btnPrimary,
+                  flex: 2,
+                  opacity: salvando || faltaAceiteComplementar ? 0.45 : 1,
+                  cursor: salvando || faltaAceiteComplementar ? "default" : "pointer",
+                }}
               >
                 {salvando ? (
                   "Salvando…"
@@ -2567,7 +2914,7 @@ export default function Home() {
                     // Cartão conferido fica cinza: é o que faz o que ainda falta
                     // conferir saltar da lista, sem precisar contar nada.
                     background: e.conferido === true ? CORES.conferido : "white",
-                    padding: `${ESPACO[3]}px ${ESPACO[4]}px`,
+                    padding: `${ESPACO[3]} ${ESPACO[4]}`,
                     display: "flex",
                     flexDirection: "column",
                     gap: ESPACO[2],
@@ -3000,7 +3347,7 @@ export default function Home() {
             gap: ESPACO[3],
             maxWidth: 640,
             margin: "0 auto",
-            padding: `${ESPACO[3]}px ${ESPACO[4]}px`,
+            padding: `${ESPACO[3]} ${ESPACO[4]}`,
             borderRadius: 10,
             background: aviso.tipo === "erro" ? CORES.alertaFundo : CORES.escura,
             color: aviso.tipo === "erro" ? CORES.alerta : CORES.sobreEscura,
@@ -3053,7 +3400,7 @@ export default function Home() {
             // somado ao afastamento — sem ele a ilha encostaria no indicador.
             left: ESPACO[3],
             right: ESPACO[3],
-            bottom: `calc(${ESPACO[3]}px + env(safe-area-inset-bottom))`,
+            bottom: `calc(${ESPACO[3]} + env(safe-area-inset-bottom))`,
             display: "flex",
             gap: ESPACO[1],
             padding: ESPACO[1],
@@ -3082,7 +3429,7 @@ export default function Home() {
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 2,
-                  padding: `${ESPACO[2]}px ${ESPACO[1]}px`,
+                  padding: `${ESPACO[2]} ${ESPACO[1]}`,
                   // A aba ativa é uma pílula preenchida, no mesmo tom que o
                   // resto do app já usa para "escolhido" (chip de mês, bloco
                   // de cadastro aberto). A linha no topo saiu: dentro de uma
@@ -3280,7 +3627,7 @@ function Bloco({ titulo, quantidade, aberto, aoAlternar, children }) {
           alignItems: "center",
           justifyContent: "space-between",
           gap: ESPACO[2],
-          padding: `0 ${ESPACO[3]}px`,
+          padding: `0 ${ESPACO[3]}`,
           background: aberto ? CORES.clara : "transparent",
           border: "none",
           cursor: "pointer",
@@ -3595,6 +3942,266 @@ function SeletorDeMes({ meses, selecionado, onSelecionar, totalGeral, totalDeHoj
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * O campo do local na tela inicial, e a folha que sobe ao tocá-lo.
+ *
+ * A folha tem busca porque a lista passou de uma tela; tem "Recentes" porque
+ * quem trabalha em dois ou três lugares não deveria rolar até o nome deles a
+ * cada troca. A busca ignora acento e caixa — "sao luiz" acha o SÃO LUIZ.
+ */
+/**
+ * O campo do local na tela inicial, e a folha que sobe ao tocá-lo.
+ *
+ * A folha tem busca porque a lista passou de uma tela; tem "Recentes" porque
+ * quem trabalha em dois ou três lugares não deveria rolar até o nome deles a
+ * cada troca. A busca ignora acento e caixa — "sao luiz" acha o SÃO LUIZ.
+ */
+function SeletorDeLocal({ local, lembrado, precisaConfirmar, aoConfirmar, recentes, aoEscolher }) {
+  const [aberta, setAberta] = useState(false);
+  const [busca, setBusca] = useState("");
+  // Quanto a folha desceu sob o dedo. O início fica numa ref: muda a cada
+  // movimento e não precisa redesenhar nada sozinho.
+  const [arrasto, setArrasto] = useState(0);
+  const inicioDoArrasto = useRef(null);
+
+  function fechar() {
+    setAberta(false);
+    setBusca("");
+    setArrasto(0);
+    inicioDoArrasto.current = null;
+  }
+
+  // Arrastar pela alça ou pelo cabeçalho fecha, como as folhas do iOS. Só
+  // essa faixa responde: na lista, o mesmo gesto é rolar. Pointer events
+  // com `touch-action: none` funcionam igual no Safari e no PWA.
+  const arrastar = {
+    onPointerDown: (ev) => {
+      if (ev.target.closest("button")) return; // o "Fechar" continua um toque
+      inicioDoArrasto.current = ev.clientY;
+      ev.currentTarget.setPointerCapture?.(ev.pointerId);
+    },
+    onPointerMove: (ev) => {
+      if (inicioDoArrasto.current === null) return;
+      setArrasto(Math.max(0, ev.clientY - inicioDoArrasto.current));
+    },
+    onPointerUp: () => {
+      if (inicioDoArrasto.current === null) return;
+      inicioDoArrasto.current = null;
+      if (arrasto > 90) fechar();
+      else setArrasto(0);
+    },
+  };
+  arrastar.onPointerCancel = arrastar.onPointerUp;
+
+  function escolher(nome) {
+    aoEscolher(nome);
+    fechar();
+  }
+
+  // Esc fecha, como em qualquer folha; e a página por trás não rola enquanto
+  // a folha está aberta, senão o dedo que rola a lista arrasta o app inteiro.
+  useEffect(() => {
+    if (!aberta) return undefined;
+    const aoTeclar = (ev) => ev.key === "Escape" && fechar();
+    window.addEventListener("keydown", aoTeclar);
+    const antes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", aoTeclar);
+      document.body.style.overflow = antes;
+    };
+  }, [aberta]);
+
+  const termo = normalizarTexto(busca.trim());
+  const lista = termo ? NOMES_DE_LOCAL.filter((n) => normalizarTexto(n).includes(termo)) : NOMES_DE_LOCAL;
+  const mostraRecentes = !termo && recentes.length > 0;
+
+  const item = (nome, comRelogio) => (
+    <button
+      key={(comRelogio ? "r-" : "") + nome}
+      type="button"
+      role="option"
+      aria-selected={nome === local}
+      className="folha-item"
+      onClick={() => escolher(nome)}
+    >
+      {comRelogio && <Icone nome="relogio" tamanho={18} style={{ color: "var(--acento)", flexShrink: 0 }} />}
+      <span style={{ flex: 1, minWidth: 0 }}>{nome}</span>
+      {nome === local && <Icone nome="check" tamanho={20} style={{ color: "var(--acento-texto)", flexShrink: 0 }} />}
+    </button>
+  );
+
+  return (
+    <>
+      {local && precisaConfirmar ? (
+        <div className="inicio-local confirmar" role="group" aria-labelledby="rotulo-local nome-do-local">
+          <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span className="inicio-local-icone"><Icone nome="local" tamanho={20} /></span>
+            <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <span style={{ fontSize: 13, color: "#6b5212" }}>Novo dia. Ainda está em</span>
+              <span id="nome-do-local" style={{ fontSize: 16, fontWeight: 600, overflowWrap: "anywhere" }}>{local}?</span>
+            </span>
+          </span>
+          <span style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+            <button type="button" className="inicio-local-trocar" onClick={() => setAberta(true)}>Trocar</button>
+            <button type="button" className="inicio-local-confirmar" onClick={aoConfirmar}>Confirmar</button>
+          </span>
+        </div>
+      ) : local ? (
+        <button type="button" className="inicio-local" onClick={() => setAberta(true)} aria-labelledby="rotulo-local nome-do-local">
+          <span className="inicio-local-icone"><Icone nome="local" tamanho={20} /></span>
+          <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
+            <span id="nome-do-local" style={{ fontSize: 16, fontWeight: 600 }}>{local}</span>
+            {lembrado && (
+              <span style={{ fontSize: 12, color: "#6b665c" }}>Usado por último neste aparelho</span>
+            )}
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--acento-texto)", flexShrink: 0 }}>Trocar</span>
+        </button>
+      ) : (
+        <button type="button" className="inicio-local vazio" onClick={() => setAberta(true)}>
+          <span className="inicio-local-icone"><Icone nome="busca" tamanho={20} /></span>
+          <span style={{ fontSize: 15, fontWeight: 500, color: "#5f5b53", flex: 1 }}>Escolha o local para começar</span>
+        </button>
+      )}
+
+      {aberta && (
+        <div className="folha-fundo">
+          {/* O espaço vazio acima da folha também fecha: é onde o polegar vai
+              naturalmente para desistir. */}
+          <button
+            type="button"
+            aria-label="Fechar lista de locais"
+            onClick={fechar}
+            style={{ flex: 1, border: "none", background: "transparent", cursor: "pointer" }}
+          />
+          <div
+            className="folha"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Escolher local"
+            style={arrasto ? { transform: `translateY(${arrasto}px)`, transition: "none" } : undefined}
+          >
+            <div className="folha-topo" {...arrastar}>
+              <span aria-hidden="true" className="folha-alca" />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0 12px" }}>
+                <span style={{ fontSize: 18, fontWeight: 700 }}>Escolher local</span>
+                <button
+                  type="button"
+                  onClick={fechar}
+                  style={{ height: 44, padding: "0 4px", border: "none", background: "transparent", color: "var(--acento-texto)", fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+            <label className="folha-busca">
+              <Icone nome="busca" tamanho={18} />
+              <input
+                type="search"
+                aria-label="Buscar local"
+                placeholder="Buscar hospital ou clínica"
+                value={busca}
+                onChange={(ev) => setBusca(ev.target.value)}
+                autoComplete="off"
+                enterKeyHint="search"
+              />
+            </label>
+            <div role="listbox" aria-label="Locais" style={{ flex: 1, overflowY: "auto", padding: "0 0 calc(28px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", WebkitOverflowScrolling: "touch" }}>
+              {mostraRecentes && (
+                <>
+                  <span className="folha-secao" style={{ paddingTop: 14 }}>RECENTES</span>
+                  {recentes.map((n) => item(n, true))}
+                </>
+              )}
+              <span className="folha-secao">{termo ? "RESULTADOS" : "TODOS OS LOCAIS"}</span>
+              {lista.map((n) => item(n, false))}
+              {lista.length === 0 && (
+                <span style={{ fontSize: 14, color: "#6b665c", padding: "16px 2px" }}>Nenhum local encontrado.</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Os lançamentos de hoje desta pessoa, na tela inicial.
+ *
+ * Responde a pergunta de quem acabou de salvar — "entrou?" — sem trocar de aba.
+ * Só os dela, e não os da equipe: num dia cheio, os lançamentos dos colegas
+ * enterrariam o que ela acabou de fazer.
+ * Só o essencial por linha: o paciente, onde e o convênio. O Executado fica de
+ * fora: é campo da conferência, que a secretária marca depois, e aqui ele só
+ * apareceria "em aberto" em quase tudo. Tocar abre o registro na lista, que é
+ * onde se corrige.
+ */
+function HojeNaInicio({ registros, carregado, aoAbrir }) {
+  // Os mais recentes primeiro: é o que acabou de ser lançado que se procura.
+  const ordenados = [...registros].sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <span className="inicio-rotulo">
+          Hoje
+          {ordenados.length > 0 && (
+            <span style={{ fontWeight: 500, color: "#8b8b93", marginLeft: 6, fontVariantNumeric: "tabular-nums" }}>
+              {ordenados.length}
+            </span>
+          )}
+        </span>
+        <button type="button" className="inicio-link" onClick={() => aoAbrir(null)}>
+          Ver procedimentos
+        </button>
+      </div>
+
+      {ordenados.length > 0 ? (
+        <div className="inicio-cartao" style={{ overflow: "hidden" }}>
+          {ordenados.map((e) => {
+            return (
+              <button key={e.id} type="button" className="inicio-hoje-linha" onClick={() => aoAbrir(e.id)}>
+                <span style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {e.paciente || "Sem nome"}
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6b665c", minWidth: 0 }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.local || "Sem local"}</span>
+                    {e.convenio && (
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "1px 6px",
+                          borderRadius: 6,
+                          color: corDoConvenio(e.convenio) || "#6b665c",
+                          background: fundoDoConvenio(e.convenio) || "#f3f1ec",
+                        }}
+                      >
+                        {e.convenio}
+                      </span>
+                    )}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="inicio-cartao" style={{ padding: "22px 18px", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, textAlign: "center" }}>
+          <Icone nome="calendario" tamanho={28} style={{ color: "var(--acento)" }} />
+          <span style={{ fontSize: 14, fontWeight: 600 }}>
+            {carregado ? "Você ainda não lançou nada hoje" : "Buscando os seus lançamentos de hoje…"}
+          </span>
+        </div>
+      )}
+    </section>
   );
 }
 

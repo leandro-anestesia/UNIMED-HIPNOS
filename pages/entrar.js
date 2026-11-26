@@ -21,7 +21,7 @@ const ONDE_GUARDAR_O_USUARIO = "hipnos_ultimo_usuario";
 
 function Pontinhos({ quantos }) {
   return (
-    <div style={{ display: "flex", gap: ESPACO[2], justifyContent: "center", margin: `${ESPACO[4]}px 0` }}>
+    <div style={{ display: "flex", gap: ESPACO[2], justifyContent: "center", margin: `${ESPACO[4]} 0` }}>
       {Array.from({ length: DIGITOS_DO_PIN }).map((_, i) => (
         <div
           key={i}
