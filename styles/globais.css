@@ -263,3 +263,57 @@ nav .aba-da-barra:active {
     opacity: 0.6;
   }
 }
+
+/* O aviso do procedimento complementar: fixo, e não piscando. O que pisca o
+   tempo todo vira paisagem; o aceite embaixo é o que garante a leitura. */
+.aviso-complementar {
+  border-radius: 14px;
+  background: #fff4d6;
+  border: 1.5px solid #e0b44a;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
+  color: #1A1A1A;
+}
+
+/* "Realizou Analgesia?" — a pergunta que o parto no principal abre.
+   Fundo de aviso, como a caixa da guia complementar: é da mesma família de
+   recado, o que se perde por esquecimento. Vira vermelha só quando o "Sim"
+   ficou sem a assistência marcada e alguém tentou salvar. */
+.pergunta-analgesia {
+  border-radius: 14px;
+  background: #fff4d6;
+  border: 1.5px solid #e0b44a;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
+  color: #1A1A1A;
+}
+
+/* 44px de alvo: a resposta é dada de luva, no centro cirúrgico. */
+.analgesia-botao {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1.5px solid #E3DAC5;
+  background: #FFFFFF;
+  color: #1A1A1A;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pergunta-analgesia.falta {
+  background: #FCF0EE;
+  border-color: #B04A3C;
+  color: #B04A3C;
+}
+
+.analgesia-botao.aceso {
+  background: #B8963E;
+  border-color: #B8963E;
+  color: #fff;
+}

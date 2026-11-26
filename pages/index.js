@@ -22,7 +22,12 @@ import { analisarGuia } from "../lib/guia";
 import { estadoDe, foiExecutada, opcoesDe, padraoDe, rotuloDe } from "../lib/estados";
 import { NOMES_DE_LOCAL, leituraDoLocal } from "../lib/locais";
 import { ehDaVision, regrasDaVision } from "../lib/vision";
-import { osSoComplementares, recadoDoSoComplementar } from "../lib/procedimentos";
+import {
+  osSoComplementares,
+  recadoDoSoComplementar,
+  temAssistenciaAoParto,
+  temParto,
+} from "../lib/procedimentos";
 import { chaveDeOrdem, ordenarRegistros } from "../lib/ordem";
 import { modeloDoRegistro } from "../lib/modelos";
 import { CORES, EQUIPE, PREFIXO_ARQUIVO, TITULO, VERSAO_VISIVEL, corDoConvenio, fundoDoConvenio } from "../lib/marca";
@@ -365,6 +370,17 @@ export default function Home() {
   // dois casos, porque `status` só sabe que está lendo, não o quê: quem
   // fotografava o mapa da clínica lia que o app estava lendo uma guia.
   const [lendo, setLendo] = useState("guia"); // guia | mapa | mapa-pdf
+  // "Confirmo que preenchi a guia complementar": o complementar só é pago com
+  // a guia própria, e o aviso piscando era ignorado de tanto aparecer. Um
+  // aceite explícito trava o Salvar até alguém de fato olhar.
+  const [aceiteComplementar, setAceiteComplementar] = useState(false);
+  // "Realizou analgesia?", perguntada quando o principal é um parto:
+  // "sim" | "nao" | null (ainda sem resposta).
+  //
+  // Não é campo do registro, e por isso não é gravada. O que se grava é a
+  // consequência — a assistência entre os complementares, com as horas —, e
+  // essa sim vai para a planilha e para a conta.
+  const [analgesiaDeParto, setAnalgesiaDeParto] = useState(null);
   const [activeTab, setActiveTab] = useState("novo"); // novo | procedimentos | cadastros
   const [viewingEntry, setViewingEntry] = useState(null);
   const [cadastros, setCadastros] = useState(CADASTROS_VAZIOS);
@@ -1155,6 +1171,47 @@ export default function Home() {
   // preenchido.
   const faltaProcedimento = !!errorMsg && marcados(draft.procedimentos).length === 0;
 
+  const faltaAceiteComplementar =
+    !ehParticular(draft) && (draft.procedimentoComplementar || []).length > 0 && !aceiteComplementar;
+
+  /**
+   * A pergunta da analgesia, e o que ela passa a exigir.
+   *
+   * Só aparece fora do particular: na planilha particular não há coluna de
+   * complementar — o bloco inteiro está escondido —, então perguntar ali seria
+   * pedir uma resposta cuja única consequência não existe, e um "sim" travaria
+   * o Salvar sem campo nenhum para destravá-lo.
+   *
+   * A resposta mostrada tolera o registro antigo: se a assistência JÁ está
+   * marcada, o registro responde a pergunta por si, e a caixa abre com "Sim"
+   * aceso em vez de em branco. A exigência, no entanto, olha só o que foi
+   * clicado agora — quem clica "Sim" e desmarca a assistência continua barrado.
+   */
+  const perguntarAnalgesia = !ehParticular(draft) && temParto(marcados(draft.procedimentos));
+  const respostaAnalgesia =
+    analgesiaDeParto || (temAssistenciaAoParto(draft.procedimentoComplementar) ? "sim" : null);
+  const faltaAssistenciaAoParto =
+    perguntarAnalgesia &&
+    analgesiaDeParto === "sim" &&
+    !temAssistenciaAoParto(draft.procedimentoComplementar);
+  // A pergunta é obrigatória: registro de parto não sai sem ela respondida.
+  // Vale a resposta MOSTRADA, e não só a clicada.
+  const faltaRespostaAnalgesia = perguntarAnalgesia && !respostaAnalgesia;
+
+  // Mexeu nos complementares — marcou outro, desmarcou um —, o aceite volta
+  // a valer nada: a guia que foi preenchida era para a lista de antes.
+  const codigosComplementares = (draft.procedimentoComplementar || []).map(codigoDo).join("|");
+  useEffect(() => {
+    setAceiteComplementar(false);
+  }, [codigosComplementares, status]);
+
+  // Saiu o parto do principal — desmarcado, apagado, trocado —, a resposta
+  // deixa de valer. Um "sim" esquecido travaria o Salvar de um registro que já
+  // não é de parto, e nada na tela explicaria por quê.
+  useEffect(() => {
+    if (!perguntarAnalgesia) setAnalgesiaDeParto(null);
+  }, [perguntarAnalgesia, status]);
+
   async function confirmEntry() {
     // A trava real é o ref: o estado do React só vale no próximo render, e um
     // toque duplo rápido dispararia dois envios antes disso. O `salvando` serve
@@ -1187,6 +1244,25 @@ export default function Home() {
     const foraDeLugar = osSoComplementares(procedimentos);
     if (foraDeLugar.length > 0) {
       setErrorMsg(recadoDoSoComplementar(foraDeLugar));
+      return;
+    }
+
+    // A pergunta antes da consequência: sem resposta não há o que exigir, e
+    // deixar passar em branco devolveria o esquecimento que a caixa veio
+    // impedir.
+    if (faltaRespostaAnalgesia) {
+      setErrorMsg("Responda se houve analgesia para salvar o registro.");
+      return;
+    }
+
+    // Respondeu "Sim" e a assistência não está marcada: é exatamente o
+    // lançamento que a pergunta existe para evitar. Barrar aqui, e não só
+    // pintar a caixa, é o que faz a hora ser cobrada.
+    if (faltaAssistenciaAoParto) {
+      setErrorMsg(
+        "Houve analgesia: marque \"Assistência ao trabalho de parto\" em Procedimento " +
+          "Complementar, com as horas."
+      );
       return;
     }
 
@@ -2308,6 +2384,44 @@ export default function Home() {
                 </button>
               </div>
 
+              {/* O parto é o caso em que a analgesia fica sem cobrar: lança-se
+                  a cesariana, que é o ato, e a assistência ao trabalho de
+                  parto — paga por hora, à parte — vai junto com a lembrança.
+
+                  A caixa fica AQUI, entre o principal que a abriu e o
+                  complementar que ela exige, porque é a ordem em que a coisa
+                  acontece. No fim do formulário seria uma pergunta sem
+                  contexto; antes do principal, uma pergunta sem motivo. */}
+              {perguntarAnalgesia && (
+                <div className={`pergunta-analgesia${(faltaAssistenciaAoParto || faltaRespostaAnalgesia) && errorMsg ? " falta" : ""}`} role="group" aria-labelledby="pergunta-analgesia-titulo">
+                  <span id="pergunta-analgesia-titulo" style={{ fontSize: 15, fontWeight: 600 }}>
+                    Realizou Analgesia? *
+                  </span>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                    {[["sim", "Sim"], ["nao", "Não"]].map(([valor, rotulo]) => (
+                      <button
+                        key={valor}
+                        type="button"
+                        className={`analgesia-botao${respostaAnalgesia === valor ? " aceso" : ""}`}
+                        aria-pressed={respostaAnalgesia === valor}
+                        onClick={() => setAnalgesiaDeParto(valor)}
+                      >
+                        {rotulo}
+                      </button>
+                    ))}
+                  </div>
+                  {/* O recado do "Sim" aparece na hora, e não só ao salvar: a
+                      exigência nasce do toque, e descobri-la no fim do
+                      formulário é descobrir tarde. */}
+                  {faltaAssistenciaAoParto && (
+                    <span style={{ fontSize: TEXTO.apoio, lineHeight: 1.4 }}>
+                      Marque <strong>Assistência ao trabalho de parto</strong> em Procedimento
+                      Complementar, com as horas.
+                    </span>
+                  )}
+                </div>
+              )}
+
               <div style={{ height: 1, background: CORES.bordaSuave, margin: "4px 0" }} />
 
               {CAMPOS_MANUAIS.filter((f) => cabeNesteRegistro(f, draft)).map((f) => {
@@ -2370,35 +2484,29 @@ export default function Home() {
                   })}
                 </div>
                 {(draft.procedimentoComplementar || []).length > 0 && (
-                  <div
-                    className="aviso-guia-complementar"
-                    style={{
-                      fontSize: TEXTO.apoio,
-                      fontWeight: 700,
-                      color: CORES.alerta,
-                      textAlign: "center",
-                    }}
-                  >
-                    NÃO ESQUEÇA DE PREENCHER A GUIA COMPLEMENTAR
-                    <style jsx>{`
-                      .aviso-guia-complementar {
-                        animation: piscar-aviso 1.8s ease-in-out infinite;
-                      }
-                      @keyframes piscar-aviso {
-                        0%,
-                        100% {
-                          opacity: 1;
-                        }
-                        50% {
-                          opacity: 0.25;
-                        }
-                      }
-                      @media (prefers-reduced-motion: reduce) {
-                        .aviso-guia-complementar {
-                          animation: none;
-                        }
-                      }
-                    `}</style>
+                  /* O aviso piscando era ignorado de tanto aparecer: pisca
+                     igual em todo registro com complementar, e o olho aprende
+                     a não ver. O aceite explícito trava o Salvar até alguém de
+                     fato olhar — e volta a zero sempre que a lista de
+                     complementares muda, porque a guia preenchida era para a
+                     lista de antes. */
+                  <div className="aviso-complementar" role="alert">
+                    <span style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <Icone nome="alerta" tamanho={20} style={{ color: "#7a5200", flexShrink: 0 }} />
+                      <span style={{ fontSize: 14, color: "#4a3500", lineHeight: 1.4 }}>
+                        Este registro tem procedimento complementar.
+                      </span>
+                    </span>
+                    <label style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        required
+                        checked={aceiteComplementar}
+                        onChange={(e) => setAceiteComplementar(e.target.checked)}
+                        style={{ width: 22, height: 22, flexShrink: 0, accentColor: "#1a1a1a" }}
+                      />
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>Confirmo que preenchi a Guia Complementar</span>
+                    </label>
                   </div>
                 )}
               </div>
@@ -2463,8 +2571,13 @@ export default function Home() {
               </button>
               <button
                 onClick={confirmEntry}
-                disabled={salvando}
-                style={{ ...btnPrimary, flex: 2, opacity: salvando ? 0.6 : 1, cursor: salvando ? "default" : "pointer" }}
+                disabled={salvando || faltaAceiteComplementar}
+                style={{
+                  ...btnPrimary,
+                  flex: 2,
+                  opacity: salvando || faltaAceiteComplementar ? 0.45 : 1,
+                  cursor: salvando || faltaAceiteComplementar ? "default" : "pointer",
+                }}
               >
                 {salvando ? (
                   "Salvando…"
