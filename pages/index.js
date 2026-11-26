@@ -1848,36 +1848,46 @@ export default function Home() {
         </div>
       )}
 
-      <div style={{ background: CORES.escura, padding: "20px 20px 24px", position: "relative" }}>
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${CORES.principal}, ${CORES.acento})` }} />
+      <div
+        style={{
+          background: CORES.escura,
+          padding: "calc(env(safe-area-inset-top) + 14px) 20px 14px",
+          borderBottom: `2px solid ${CORES.principal}`,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <img src="/logo-mark.png" alt={EQUIPE} style={{ height: 40, width: "auto", objectFit: "contain", flexShrink: 0 }} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: TEXTO.miudo, letterSpacing: "0.15em", color: CORES.acento, textTransform: "uppercase", marginBottom: 4 }}>
+          <img src="/logo-mark.png" alt={EQUIPE} style={{ height: 40, width: 40, objectFit: "contain", flexShrink: 0 }} />
+          <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "2.4px", color: "#c9aa63", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {EQUIPE}
-            </div>
-            {/* O corpo acompanha a largura da tela: com o botão da conta ao
-                lado, 26px fixos quebravam "Controle de Cirurgias" em duas
-                linhas num iPhone estreito, e o cabeçalho crescia junto. */}
-            <h1 style={{ margin: 0, fontSize: "clamp(20px, 6vw, 26px)", fontWeight: 400, color: CORES.sobreEscura, whiteSpace: "nowrap" }}>
+            </span>
+            {/* Sem quebra: num iPhone estreito, com o avatar ao lado, o título
+                em duas linhas fazia o cabeçalho crescer. */}
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "clamp(15px, 4.4vw, 17px)",
+                fontWeight: 700,
+                letterSpacing: "-0.2px",
+                color: CORES.sobreEscura,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
               {TITULO}
             </h1>
-            <div style={{ fontSize: TEXTO.apoio, color: CORES.acento, marginTop: 4 }}>
-              {loaded ? `${entries.length} registro${entries.length === 1 ? "" : "s"} · compartilhado` : "carregando…"}
-            </div>
           </div>
 
-          {/* Quem está logado, e por onde se sai.
-              
-              No cabeçalho porque vale nas três abas: antes isso morava só no
-              fim dos Cadastros, e quem quisesse sair tinha de ir procurar. As
-              iniciais, e não um ícone genérico, porque num aparelho
-              compartilhado a primeira pergunta é "estou logado como quem?". */}
+          {/* Quem está logado, e por onde se sai. As iniciais, e não um ícone
+              genérico: num aparelho que passa de mão em mão a primeira
+              pergunta é "estou logado como quem?". */}
           <button
             type="button"
             onClick={() => setMenuDoAcesso((v) => !v)}
-            // O texto do botão são as iniciais, que não dizem nada a quem usa
-            // leitor de tela — daí o rótulo explícito.
             aria-label="Sua conta"
             title="Sua conta"
             style={{
@@ -1885,17 +1895,28 @@ export default function Home() {
               height: ALVO,
               flexShrink: 0,
               borderRadius: "50%",
-              background: menuDoAcesso ? CORES.acento : "transparent",
-              color: menuDoAcesso ? CORES.escura : CORES.acento,
-              border: `1px solid ${CORES.acento}`,
-              fontSize: TEXTO.apoio,
-              fontWeight: 700,
-              letterSpacing: "0.03em",
+              background: menuDoAcesso ? CORES.principal : "transparent",
+              color: menuDoAcesso ? CORES.escura : "#d9be7c",
+              border: `1.5px solid ${CORES.principal}`,
+              fontSize: 14,
+              fontWeight: 600,
               cursor: "pointer",
             }}
           >
             {iniciaisDe(acesso) || <Icone nome="pessoas" tamanho={18} />}
           </button>
+        </div>
+
+        {/* No lugar da contagem de registros: o número não ajudava ninguém a
+            lançar, e "carregando…" era a primeira coisa que se lia ao abrir.
+            A data de hoje ajuda — é a data com que o lançamento nasce. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span style={{ fontSize: 14, color: "#d6d2c8", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {saudacao(acesso)}
+          </span>
+          <span style={{ fontSize: 12, color: "#a8a399", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+            {dataPorExtenso()}
+          </span>
         </div>
       </div>
 
