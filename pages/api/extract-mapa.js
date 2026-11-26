@@ -2,12 +2,18 @@ import { semOsIgnorados } from "../../lib/procedimentos";
 import { normalizarTexto, semTratamento } from "../../lib/texto";
 import { exigir } from "../../lib/guarda";
 import { ehDaVision } from "../../lib/vision";
+import { textoDaResposta } from "../../lib/resposta-da-ia";
 
 export const config = {
   api: {
     bodyParser: { sizeLimit: "10mb" },
   },
 };
+
+// Ler um PDF de várias páginas é bem mais lento do que ler uma foto, e o
+// padrão da Vercel para rota de API é curto demais para isso: a função morreria
+// no meio da leitura e o app mostraria um erro que não é o erro.
+export const maxDuration = 300;
 
 /**
  * Leitura do MAPA CIRÚRGICO da clínica: a folha do dia, com todos os pacientes.
@@ -26,8 +32,12 @@ export const config = {
  * 4. O que interessa não está na linha do paciente, e sim no bloco
  *    "COMPLEMENTO:" logo abaixo dela: cirurgião, procedimento e nº da guia.
  * 5. A folha impressa pode trazer duas páginas na mesma foto.
+ * 6. A agenda também chega em PDF, direto do sistema da clínica. Aí ela vem
+ *    como `document`, não `image`, e as páginas vêm separadas em vez de
+ *    empilhadas numa foto só — por isso a instrução fala em "arquivo" e manda
+ *    ler todas as páginas, seja qual for a forma.
  */
-const PROMPT = `Esta é a foto do MAPA CIRÚRGICO (ou agenda) de uma clínica: uma tabela com VÁRIOS pacientes de um mesmo dia. Leia a folha inteira e devolva um paciente por entrada.
+const PROMPT = `Este é o MAPA CIRÚRGICO (ou agenda) de uma clínica, em foto ou em PDF: uma tabela com VÁRIOS pacientes de um mesmo dia. Leia a folha inteira e devolva um paciente por entrada.
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
@@ -55,7 +65,7 @@ O QUE NÃO É PACIENTE (não devolva nenhum destes):
 
 Outras regras:
 
-- A folha pode ter DUAS PÁGINAS na mesma foto, uma embaixo da outra, cada uma com seu cabeçalho. Leia as duas e junte os pacientes numa lista só, na ordem em que aparecem.
+- O arquivo pode ter VÁRIAS PÁGINAS: numa foto elas aparecem empilhadas, uma embaixo da outra, cada uma com seu cabeçalho; num PDF vêm separadas. Nos dois casos, leia TODAS e junte os pacientes numa lista só, na ordem em que aparecem.
 - Idade, identidade, telefone e prontuário NÃO são usados: não devolva nenhum deles.
 - Campo que não estiver visível ou legível fica como string vazia "" (ou lista vazia).
 - A DATA DO MAPA não é lida. A data do lançamento é a do dia em que a foto está sendo tirada, e quem a informa é o aplicativo. Não devolva data em campo nenhum nem acrescente uma chave de data ao JSON.
@@ -80,7 +90,7 @@ Outras regras:
  * 4. O resto da célula é material e recado — lente, medicação, dinheiro —, e
  *    nada disso é procedimento.
  */
-const PROMPT_VISION = `Esta é a foto do MAPA CIRÚRGICO da clínica, no formato "Módulo de Agenda Médica": uma tabela com as colunas Hora, Paciente, Telefone, Categoria, Tipo, F, Atendente, C, E, Chegou e Ficha. Cada linha é um paciente de um mesmo dia.
+const PROMPT_VISION = `Este é o MAPA CIRÚRGICO da clínica, em foto ou em PDF, no formato "Módulo de Agenda Médica": uma tabela com as colunas Hora, Paciente, Telefone, Categoria, Tipo, F, Atendente, C, E, Chegou e Ficha. Cada linha é um paciente de um mesmo dia.
 
 Responda APENAS com um objeto JSON, sem markdown e sem texto em volta, exatamente com estas chaves:
 {
@@ -109,7 +119,7 @@ Outras regras:
 
 - Telefone, Tipo, F, Atendente, C, E, Chegou e Ficha NÃO são usados: não devolva nenhum deles, nem o número da carteirinha.
 - Linha sem nome de pessoa, ou que seja recado da clínica, não é paciente: não devolva.
-- A folha pode ter mais de uma página na mesma foto. Leia todas e junte numa lista só, na ordem.
+- O arquivo pode ter mais de uma página — empilhadas, numa foto, ou separadas, num PDF. Leia todas e junte numa lista só, na ordem.
 - A DATA do mapa não é lida: quem a informa é o aplicativo. Não devolva data em campo nenhum.
 - Não invente paciente, procedimento nem valor. Transcreva o que está escrito.`;
 
@@ -160,6 +170,16 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "imageBase64 é obrigatório" });
   }
 
+  // A agenda da clínica sai do sistema em PDF, e um PDF não é imagem: vai num
+  // bloco `document`, não `image`. Lista fechada porque é o que a API aceita —
+  // um tipo solto aqui vira um erro vindo de fora, difícil de ler na tela.
+  const TIPOS = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
+  const tipo = mediaType || "image/jpeg";
+  if (!TIPOS.includes(tipo)) {
+    return res.status(400).json({ error: `Tipo de arquivo não suportado: ${tipo}` });
+  }
+  const ehPdf = tipo === "application/pdf";
+
   // A Vision usa outra folha, e portanto outra instrução. O resto das clínicas
   // segue na calibrada contra o ProDoctor.
   const daVision = ehDaVision(local);
@@ -177,12 +197,19 @@ export default async function handler(req, res) {
         model: "claude-sonnet-5",
         // Um mapa cheio tem vinte pacientes, cada um com procedimento e guia:
         // com folga, para o JSON não ser cortado no meio da lista.
-        max_tokens: 8000,
+        // O raciocínio sai DESTE teto. No `claude-sonnet-5`, não mandar
+        // `thinking` liga o modo adaptativo, e com 8000 um PDF de várias
+        // páginas acabava a cota pensando: a resposta voltava sem bloco de
+        // texto nenhum. O JSON de vinte pacientes não chega perto de 32000 —
+        // a folga é para o raciocínio, não para a lista.
+        max_tokens: 32000,
         messages: [
           {
             role: "user",
             content: [
-              { type: "image", source: { type: "base64", media_type: mediaType || "image/jpeg", data: imageBase64 } },
+              ehPdf
+                ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: imageBase64 } }
+                : { type: "image", source: { type: "base64", media_type: tipo, data: imageBase64 } },
               { type: "text", text: prompt },
             ],
           },
@@ -197,12 +224,12 @@ export default async function handler(req, res) {
       return res.status(r.status).json({ error: msg });
     }
 
-    const textBlock = (data.content || []).find((b) => b.type === "text");
-    if (!textBlock) {
-      return res.status(502).json({ error: "Resposta da API sem bloco de texto" });
+    const lido = textoDaResposta(data);
+    if (lido.erro) {
+      return res.status(502).json({ error: lido.erro });
     }
 
-    let clean = textBlock.text.replace(/```json|```/g, "").trim();
+    let clean = lido.texto.replace(/```json|```/g, "").trim();
     const match = clean.match(/\{[\s\S]*\}/);
     if (match) clean = match[0];
 

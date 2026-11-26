@@ -290,6 +290,42 @@ async function mensagemDeErro(r) {
   return `erro ${r.status}`;
 }
 
+/**
+ * O teto do PDF do mapa.
+ *
+ * Em base64 um arquivo cresce um terço, e o corpo da requisição ainda leva o
+ * JSON em volta: 3 MB de PDF viram uns 4 MB de corpo. O teto é conservador de
+ * propósito — a agenda exportada do sistema da clínica é um PDF de texto, de
+ * algumas centenas de KB, e quem passa disso costuma ser um PDF escaneado, que
+ * é foto com outro nome: para esse, fotografar a folha já funciona e dá menos
+ * volta.
+ */
+const MAIOR_PDF = 3 * 1024 * 1024;
+
+/** O que o seletor do mapa abre: foto OU a agenda em PDF. */
+const TIPOS_DO_MAPA = "image/*,application/pdf";
+
+/**
+ * O arquivo em base64, inteiro e sem passar por canvas.
+ *
+ * `fileToResizedBase64` desenha num `<img>` para encolher, e PDF não entra em
+ * `<img>` — a leitura falharia com "não foi possível decodificar esta imagem".
+ * Aqui o arquivo vai como está; quem cuida do tamanho é `MAIOR_PDF`.
+ */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Não foi possível ler o arquivo selecionado."));
+    reader.onload = () => {
+      const texto = String(reader.result || "");
+      const virgula = texto.indexOf(",");
+      if (virgula < 0) return reject(new Error("Não foi possível ler o arquivo selecionado."));
+      resolve(texto.slice(virgula + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function fileToResizedBase64(file, maxDim = 1568, quality = 0.85) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -328,7 +364,7 @@ export default function Home() {
   // Qual leitura está em curso. O aviso de espera dizia "Lendo a guia…" nos
   // dois casos, porque `status` só sabe que está lendo, não o quê: quem
   // fotografava o mapa da clínica lia que o app estava lendo uma guia.
-  const [lendo, setLendo] = useState("guia"); // guia | mapa
+  const [lendo, setLendo] = useState("guia"); // guia | mapa | mapa-pdf
   const [activeTab, setActiveTab] = useState("novo"); // novo | procedimentos | cadastros
   const [viewingEntry, setViewingEntry] = useState(null);
   const [cadastros, setCadastros] = useState(CADASTROS_VAZIOS);
@@ -768,18 +804,40 @@ export default function Home() {
   async function handleMapa(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
+
+    // A agenda da clínica sai do sistema em PDF. Antes, só foto: quem tinha o
+    // PDF na mão precisava imprimir para fotografar, ou abrir e dar print na
+    // tela — duas voltas para chegar ao mesmo lugar, e com pior leitura.
+    const ehPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+
+    if (ehPdf && file.size > MAIOR_PDF) {
+      // Recusar aqui, com o motivo, em vez de deixar o servidor devolver um
+      // erro de tamanho que não diz o que fazer.
+      setErrorMsg(
+        `Este PDF tem ${(file.size / 1024 / 1024).toFixed(1)} MB e o limite é ` +
+          `${MAIOR_PDF / 1024 / 1024} MB. Se ele for digitalizado, fotografar a folha funciona e costuma ler igual.`
+      );
+      if (mapaInputRef.current) mapaInputRef.current.value = "";
+      return;
+    }
+
     setErrorMsg("");
-    setLendo("mapa");
+    setLendo(ehPdf ? "mapa-pdf" : "mapa");
     setStatus("extracting");
     try {
-      const base64 = await fileToResizedBase64(file);
+      // O PDF vai inteiro; a foto continua encolhendo antes de subir.
+      const base64 = ehPdf ? await fileToBase64(file) : await fileToResizedBase64(file);
 
       const r = await fetch("/api/extract-mapa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // O local vai junto porque a folha da Vision é outra, e a leitura
         // precisa saber qual instrução usar.
-        body: JSON.stringify({ imageBase64: base64, mediaType: "image/jpeg", local: localAtivo }),
+        body: JSON.stringify({
+          imageBase64: base64,
+          mediaType: ehPdf ? "application/pdf" : "image/jpeg",
+          local: localAtivo,
+        }),
       });
       const parsed = await r.json();
       if (!r.ok) throw new Error(parsed.error || "Falha na leitura do mapa");
@@ -1717,6 +1775,20 @@ export default function Home() {
               </div>
             )}
 
+            {/* O recado de recusa, aqui na tela inicial.
+
+                `errorMsg` só tinha lugar dentro do cartão do mapa e do
+                formulário — telas que só existem DEPOIS de a leitura dar
+                certo. Um arquivo recusado antes disso (um PDF grande demais)
+                punha a mensagem num estado que não aparece, e o toque no botão
+                virava silêncio: pior do que um erro do servidor, porque não
+                diz nem que houve recusa. */}
+            {status === "idle" && errorMsg && (
+              <div style={{ padding: "12px 14px", borderRadius: 12, fontSize: TEXTO.apoio, color: CORES.avisoTinta, background: CORES.avisoFundo }}>
+                {errorMsg}
+              </div>
+            )}
+
             {/* Um primário só, e o resto discreto: com quatro botões do mesmo
                 peso, a tela vira uma lista de retângulos e nenhum é o caminho
                 óbvio.
@@ -1786,13 +1858,21 @@ export default function Home() {
 
         {status === "extracting" && (
           <div style={{ padding: 24, borderRadius: 8, border: `1px solid ${CORES.principal}`, background: CORES.clara, textAlign: "center", fontSize: TEXTO.apoio }}>
-            {lendo === "mapa" ? "Lendo o mapa cirúrgico…" : "Lendo a guia…"}
+            {lendo === "guia" ? "Lendo a guia…" : "Lendo o mapa cirúrgico…"}
+            {/* Um PDF de várias páginas leva bem mais tempo que uma foto. Sem
+                dizer isso, a espera parece travamento e o dedo volta ao botão
+                — o que recomeça a leitura e paga duas vezes. */}
+            {lendo === "mapa-pdf" && (
+              <div style={{ marginTop: 6, fontSize: TEXTO.apoio, color: CORES.suave }}>
+                Em PDF demora mais que em foto. Pode deixar aberto.
+              </div>
+            )}
           </div>
         )}
 
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: "none" }} />
         <input ref={galleryInputRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
-        <input ref={mapaInputRef} type="file" accept="image/*" onChange={handleMapa} style={{ display: "none" }} />
+        <input ref={mapaInputRef} type="file" accept={TIPOS_DO_MAPA} onChange={handleMapa} style={{ display: "none" }} />
 
         {status === "mapa" && mapa && (
           <div style={{ border: `1px solid ${CORES.borda}`, borderRadius: 8, background: "white", overflow: "hidden" }}>
